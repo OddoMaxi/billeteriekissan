@@ -47,6 +47,8 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npx prisma generate
+      # Types des routes (PageProps, LayoutProps, RouteContext) générés par Next.js dans .next/.
+      - run: npx next typegen
       - run: npx tsc --noEmit
       - run: npx eslint src scripts test
       - run: npx vitest run
