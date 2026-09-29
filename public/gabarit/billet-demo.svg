@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 59.4" width="210mm" height="59.4mm"
+  font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b3363"/><stop offset="1" stop-color="#0f1f3d"/>
+    </linearGradient>
+    <pattern id="stripes" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
+      <rect width="1.1" height="4" fill="#e8b23a" opacity="0.18"/>
+    </pattern>
+  </defs>
+
+  <!-- Corps -->
+  <rect width="155" height="59.4" fill="url(#bg)"/>
+  <rect width="26" height="59.4" fill="url(#stripes)"/>
+  <rect x="0" y="0" width="3" height="59.4" fill="#e8b23a"/>
+
+  <text x="10" y="11.5" font-size="2.8" fill="#e8b23a" font-weight="700" letter-spacing="0.6">GUINÉE EVENTS PRÉSENTE</text>
+  <text x="10" y="21" font-size="8.6" fill="#fff" font-weight="800" letter-spacing="-0.2">FESTIVAL</text>
+  <text x="10" y="29.6" font-size="8.6" fill="#fff" font-weight="800" letter-spacing="-0.2">CONAKRY 2026</text>
+  <text x="10" y="35.2" font-size="3" fill="#c9d5ee">Concert live · Stade du 28 Septembre</text>
+
+  <text x="10" y="42" font-size="3.2" fill="#fff" font-weight="700">SAM. 20 DÉC. 2026 · 19H00</text>
+  <text x="10" y="46.2" font-size="2.4" fill="#c9d5ee">Ouverture des portes 17h00</text>
+
+  <rect x="72" y="37.5" width="26" height="7.5" rx="1.2" fill="#e8b23a"/>
+  <text x="85" y="42.7" font-size="3.3" fill="#0f1f3d" font-weight="800" text-anchor="middle">STANDARD</text>
+  <text x="85" y="49.4" font-size="2.8" fill="#fff" font-weight="700" text-anchor="middle">100 000 GNF</text>
+
+  <text x="10" y="52.6" font-size="1.65" fill="#9fb0d3">Valable pour une seule entrée. Toute copie ou duplication est refusée au contrôle.</text>
+  <text x="10" y="54.8" font-size="1.65" fill="#9fb0d3">Ne pas plier ni couvrir le QR code. Billet ni repris ni échangé.</text>
+
+  <!-- Panneau clair du corps : zones réservées au numéro et au QR -->
+  <rect x="114" y="5.5" width="38" height="49" rx="2" fill="#fff"/>
+  <text x="133" y="7.9" font-size="1.9" fill="#667" text-anchor="middle" letter-spacing="0.4">N° BILLET</text>
+  <text x="133" y="53.2" font-size="1.7" fill="#667" text-anchor="middle">Présentez ce code à l'entrée</text>
+
+  <!-- Talon -->
+  <rect x="155" width="55" height="59.4" fill="#0f1f3d"/>
+  <rect x="155" y="0" width="55" height="3" fill="#e8b23a"/>
+  <rect x="155" y="56.4" width="55" height="3" fill="#e8b23a"/>
+  <rect x="159.5" y="5.5" width="46" height="49" rx="2" fill="#fff"/>
+  <text x="182.5" y="7.9" font-size="1.9" fill="#667" text-anchor="middle" letter-spacing="0.4">TALON · N°</text>
+  <text x="182.5" y="53.2" font-size="1.7" fill="#667" text-anchor="middle">Conservé par l'organisateur</text>
+
+  <!-- Ligne de détachement : tracée par l'application à la génération (option du modèle), pas dans le design -->
+  <circle cx="155" cy="0" r="2.2" fill="#fff"/>
+  <circle cx="155" cy="59.4" r="2.2" fill="#fff"/>
+  <text x="156.3" y="29.7" font-size="1.6" fill="#9fb0d3" transform="rotate(-90 156.3 29.7)" text-anchor="middle">✂ détacher ici</text>
+  
+</svg>

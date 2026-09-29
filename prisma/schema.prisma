@@ -1,0 +1,564 @@
+// Modèle de données — cahier des charges billetterie physique V1.2 (sections 4, 9, 10)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Organisations, utilisateurs, sessions ──────────────────────────────────
+
+enum AccountStatus {
+  ACTIVE
+  DISABLED
+}
+
+model Organization {
+  id        String        @id @default(uuid()) @db.Uuid
+  name      String
+  contact   String?
+  status    AccountStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  events    Event[]
+}
+
+model User {
+  id           String        @id @default(uuid()) @db.Uuid
+  email        String        @unique
+  name         String
+  phone        String?
+  passwordHash String
+  isAdmin      Boolean       @default(false) // administrateur central
+  status       AccountStatus @default(ACTIVE)
+  failedLogins Int           @default(0)
+  lockedUntil  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  sessions    Session[]
+  memberships EventMembership[]
+}
+
+model Session {
+  id         String    @id @default(uuid()) @db.Uuid
+  tokenHash  String    @unique // sha256 du jeton du cookie ; le jeton lui-même n'est jamais stocké
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  userAgent  String?
+  ip         String?
+
+  @@index([userId])
+}
+
+/// Rôle d'un utilisateur sur un événement. Un utilisateur peut cumuler plusieurs rôles.
+enum EventRole {
+  ORGANIZER // organisateur responsable
+  TICKET_MANAGER // gestionnaire de billetterie
+  SELLER // vendeur
+  CONTROLLER // contrôleur
+  AUDITOR // auditeur ou comptable
+}
+
+model EventMembership {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId   String    @db.Uuid
+  event     Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  role      EventRole
+  /// Contrôleurs : portes autorisées (vide = toutes les portes de l'événement)
+  gateIds   String[]  @db.Uuid
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@unique([userId, eventId, role])
+  @@index([eventId])
+}
+
+// ─── Événements, portes, catégories ──────────────────────────────────────────
+
+enum EventStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  ARCHIVED
+}
+
+model Event {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  description    String?
+  venue          String
+  address        String?
+  timezone       String       @default("Africa/Conakry")
+  doorsOpenAt    DateTime
+  startsAt       DateTime
+  endsAt         DateTime
+  status         EventStatus  @default(DRAFT)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  gates       Gate[]
+  categories  Category[]
+  memberships EventMembership[]
+  templates   TicketTemplate[]
+  batches     Batch[]
+  tickets     Ticket[]
+  scans       Scan[]
+  sales       Sale[]
+  movements   StockMovement[]
+  payments    Payment[]
+  stockCounts StockCount[]
+  incidents   GateIncident[]
+}
+
+model Gate {
+  id        String   @id @default(uuid()) @db.Uuid
+  eventId   String   @db.Uuid
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  scans     Scan[]
+
+  @@unique([eventId, name])
+}
+
+model Category {
+  id               String    @id @default(uuid()) @db.Uuid
+  eventId          String    @db.Uuid
+  event            Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name             String
+  priceGnf         Int
+  quota            Int
+  accessConditions String?
+  /// Créneau d'accès facultatif
+  slotStart        DateTime?
+  slotEnd          DateTime?
+  /// Portes autorisées (vide = toutes)
+  gateIds          String[]  @db.Uuid
+  reentryAllowed   Boolean   @default(false)
+  /// Remise maximale par billet qu'un vendeur peut accorder (0 = prix facial imposé)
+  maxDiscountGnf   Int       @default(0)
+  /// Prochain numéro visible de la catégorie (séquence propre à chaque catégorie : 001, 002…)
+  nextNumber       Int       @default(1)
+  createdAt        DateTime  @default(now())
+
+  batches Batch[]
+  tickets Ticket[]
+
+  @@unique([eventId, name])
+}
+
+// ─── Modèles de billets et profils d'impression ─────────────────────────────
+
+model TicketTemplate {
+  id               String    @id @default(uuid()) @db.Uuid
+  eventId          String    @db.Uuid
+  event            Event     @relation(fields: [eventId], references: [id])
+  name             String
+  version          Int
+  /// Fichier de fond (PDF 1 page, PNG ou JPEG) stocké hors base
+  backgroundPath   String
+  backgroundMime   String
+  backgroundSha256 String
+  /// Avertissements relevés à l'import (résolution, mise à l'échelle…)
+  designWarnings   String[]
+  /// Dimensions du design en mm (nominal 210 × 59,4 : cinq tickets par A4)
+  widthMm          Float     @default(210)
+  heightMm         Float     @default(59.4)
+  /// Zones variables en mm depuis le coin haut-gauche du ticket :
+  /// { qr: [{x,y,size}], number: [{x,y,fontSize,color,font}] } — plusieurs positions pour corps + talon
+  layout           Json
+  batApprovedAt    DateTime?
+  batApprovedById  String?   @db.Uuid
+  createdById      String    @db.Uuid
+  createdAt        DateTime  @default(now())
+  batches          Batch[]
+
+  @@unique([eventId, name, version])
+}
+
+model PrintProfile {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String   @unique
+  marginTopMm    Float    @default(5)
+  marginBottomMm Float    @default(5)
+  marginLeftMm   Float    @default(5)
+  marginRightMm  Float    @default(5)
+  gapMm          Float    @default(0)
+  cropMarks      Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  batches        Batch[]
+}
+
+// ─── Lots et billets ─────────────────────────────────────────────────────────
+
+enum BatchStatus {
+  PREPARING
+  GENERATING
+  READY
+  FAILED
+}
+
+enum BatchLayout {
+  SEQUENTIAL // 0001-0004 sur la page 1
+  STACKS // découpe en piles : 0001, 0026, 0051, 0076 sur la page 1 (pour 100)
+}
+
+model Batch {
+  id                  String         @id @default(uuid()) @db.Uuid
+  eventId             String         @db.Uuid
+  event               Event          @relation(fields: [eventId], references: [id])
+  categoryId          String         @db.Uuid
+  category            Category       @relation(fields: [categoryId], references: [id])
+  templateId          String         @db.Uuid
+  template            TicketTemplate @relation(fields: [templateId], references: [id])
+  printProfileId      String         @db.Uuid
+  printProfile        PrintProfile   @relation(fields: [printProfileId], references: [id])
+  quantity            Int
+  firstNumber         Int
+  lastNumber          Int
+  layout              BatchLayout    @default(SEQUENTIAL)
+  /// Tickets par A4, figé à la création : une réimpression reproduit exactement la mise en page d'origine
+  ticketsPerPage      Int            @default(5)
+  status              BatchStatus    @default(PREPARING)
+  pageCount           Int?
+  pdfPath             String?
+  pdfSha256           String?
+  /// Pages rendues pendant la génération (suivi de progression)
+  progressPages       Int            @default(0)
+  generationStartedAt DateTime?
+  /// PDF de production supprimé du stockage (la réimpression le régénère à l'identique)
+  pdfDestroyedAt      DateTime?
+  error               String?
+  /// Activation de lot (ventes rapides) : distincte de la vente déclarée
+  activatedAt         DateTime?
+  activatedById       String?        @db.Uuid
+  createdById         String         @db.Uuid
+  createdAt           DateTime       @default(now())
+  readyAt             DateTime?
+  tickets             Ticket[]
+
+  @@index([eventId])
+}
+
+/// État commercial (section 10). L'activation par lot est portée par Ticket.activatedAt.
+enum CommercialState {
+  IN_STOCK // généré, non distribué
+  ASSIGNED // remis à un détenteur (responsable ou vendeur)
+  SOLD // vente déclarée
+}
+
+/// États de blocage : un billet bloqué ne passe plus au contrôle.
+enum BlockState {
+  NONE
+  CANCELLED
+  LOST
+  DESTROYED
+}
+
+enum EntryState {
+  NOT_USED
+  USED
+}
+
+model Ticket {
+  id                String          @id @default(uuid()) @db.Uuid
+  eventId           String          @db.Uuid
+  event             Event           @relation(fields: [eventId], references: [id])
+  categoryId        String          @db.Uuid
+  category          Category        @relation(fields: [categoryId], references: [id])
+  batchId           String          @db.Uuid
+  batch             Batch           @relation(fields: [batchId], references: [id])
+  /// Numéro visible (001…), unique dans sa catégorie, jamais réattribué
+  number            Int
+  /// sha256 de la valeur QR : sert à retrouver le billet au scan
+  qrHash            String          @unique
+  /// Valeur QR chiffrée (AES-256-GCM) pour permettre la réimpression à l'identique
+  qrSecretEnc       String
+  commercialState   CommercialState @default(IN_STOCK)
+  blockState        BlockState      @default(NONE)
+  entryState        EntryState      @default(NOT_USED)
+  holderId          String?         @db.Uuid // détenteur courant (null = stock central)
+  /// Remise ou retour en attente de confirmation : le billet ne peut être ni vendu ni déplacé
+  pendingMovementId String?         @db.Uuid
+  /// Vendeur de la vente déclarée en cours
+  sellerId          String?         @db.Uuid
+  activatedAt       DateTime?
+  activatedById     String?         @db.Uuid
+  soldAt            DateTime?
+  usedAt            DateTime?
+  usedGateId        String?         @db.Uuid
+  /// Nombre d'admissions (plus d'une seulement avec réentrée autorisée)
+  entryCount        Int             @default(0)
+  /// Sortie enregistrée (réentrée) ; null = à l'intérieur si le billet est utilisé
+  exitedAt          DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  scans     Scan[]
+  movements StockMovementTicket[]
+  saleLines SaleTicket[]
+
+  @@unique([categoryId, number])
+  @@index([eventId, number])
+  @@index([batchId])
+  @@index([eventId, holderId])
+  @@index([eventId, sellerId])
+}
+
+// ─── Stock et ventes ─────────────────────────────────────────────────────────
+
+enum MovementKind {
+  ASSIGN // remise à un détenteur (depuis le stock central ou un autre détenteur)
+  RETURN // retour vers le stock central
+  LOSS // billet perdu
+  DAMAGE // billet endommagé ou détruit
+  CANCEL // billet annulé
+  REPLACE // billet vendu remplacé par un autre
+  ACTIVATE // activation (billet valable au contrôle sans vente déclarée)
+  DEACTIVATE
+}
+
+enum MovementStatus {
+  PENDING // en attente de l'accusé de réception
+  CONFIRMED
+  REFUSED // incident déclaré : les billets reviennent à l'émetteur
+}
+
+/// Tout changement de détenteur ou d'état d'un billet ; l'historique d'un billet en découle.
+model StockMovement {
+  id           String                @id @default(uuid()) @db.Uuid
+  eventId      String                @db.Uuid
+  event        Event                 @relation(fields: [eventId], references: [id])
+  kind         MovementKind
+  status       MovementStatus        @default(CONFIRMED)
+  fromUserId   String?               @db.Uuid // null = stock central
+  toUserId     String?               @db.Uuid // null = stock central
+  quantity     Int
+  reason       String?
+  createdById  String                @db.Uuid
+  createdAt    DateTime              @default(now())
+  resolvedById String?               @db.Uuid
+  resolvedAt   DateTime? // accusé de réception ou refus
+  incident     String?
+  tickets      StockMovementTicket[]
+
+  @@index([eventId, createdAt])
+  @@index([eventId, toUserId, status])
+}
+
+model StockMovementTicket {
+  movementId String        @db.Uuid
+  movement   StockMovement @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  ticketId   String        @db.Uuid
+  ticket     Ticket        @relation(fields: [ticketId], references: [id])
+
+  @@id([movementId, ticketId])
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  OTHER
+}
+
+enum SaleKind {
+  SALE
+  REVERSAL // contre-écriture d'une vente (montants négatifs)
+}
+
+enum ReversalType {
+  ENTRY_ERROR // erreur de saisie : les billets reviennent dans le stock du vendeur
+  CANCELLATION // annulation : billets bloqués, remboursement déclaré éventuel
+}
+
+/// Vente déclarée. Jamais supprimée ni modifiée : une correction est une contre-écriture (REVERSAL).
+model Sale {
+  id            String        @id @default(uuid()) @db.Uuid
+  eventId       String        @db.Uuid
+  event         Event         @relation(fields: [eventId], references: [id])
+  kind          SaleKind      @default(SALE)
+  sellerId      String        @db.Uuid
+  /// Somme des prix faciaux des billets (négative pour une contre-écriture)
+  faceValueGnf  Int
+  discountGnf   Int           @default(0)
+  /// Montant déclaré encaissé (vente) ou rendu (contre-écriture, négatif)
+  totalGnf      Int
+  paymentMethod PaymentMethod
+  paymentRef    String?
+  soldAt        DateTime
+  reversalOfId  String?       @db.Uuid
+  reversalOf    Sale?         @relation("Reversal", fields: [reversalOfId], references: [id])
+  reversals     Sale[]        @relation("Reversal")
+  reversalType  ReversalType?
+  reason        String?
+  createdById   String        @db.Uuid
+  createdAt     DateTime      @default(now())
+  tickets       SaleTicket[]
+
+  @@index([eventId, sellerId])
+  @@index([eventId, soldAt])
+}
+
+model SaleTicket {
+  saleId   String @db.Uuid
+  sale     Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  ticketId String @db.Uuid
+  ticket   Ticket @relation(fields: [ticketId], references: [id])
+  /// Prix facial du billet au moment de l'écriture
+  priceGnf Int
+
+  @@id([saleId, ticketId])
+}
+
+/// Versement d'un vendeur (argent remis). Déclaré, puis validé à réception réelle des fonds.
+model Payment {
+  id            String        @id @default(uuid()) @db.Uuid
+  eventId       String        @db.Uuid
+  event         Event         @relation(fields: [eventId], references: [id])
+  sellerId      String        @db.Uuid
+  amountGnf     Int
+  method        PaymentMethod
+  reference     String?
+  note          String?
+  declaredById  String        @db.Uuid
+  declaredAt    DateTime      @default(now())
+  validatedById String?       @db.Uuid
+  validatedAt   DateTime?
+  rejectedAt    DateTime?
+  rejectReason  String?
+
+  @@index([eventId, sellerId])
+}
+
+/// Comptage physique d'un détenteur (fin de journée) rapproché du stock attendu.
+model StockCount {
+  id          String   @id @default(uuid()) @db.Uuid
+  eventId     String   @db.Uuid
+  event       Event    @relation(fields: [eventId], references: [id])
+  holderId    String?  @db.Uuid // null = stock central
+  expected    Int
+  counted     Int
+  note        String?
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  @@index([eventId, createdAt])
+}
+
+// ─── Contrôle d'entrée ───────────────────────────────────────────────────────
+
+enum ScanVerdict {
+  VALID
+  REFUSED
+  CHECK
+}
+
+enum ScanReason {
+  OK
+  REENTRY // réentrée autorisée par la catégorie, après une sortie enregistrée
+  EXIT // sortie enregistrée (catégories avec réentrée)
+  OVERRIDE // admission par dérogation d'un superviseur
+  UNKNOWN // inexistant / mal formé
+  OTHER_EVENT
+  FORBIDDEN_GATE
+  NOT_ACTIVATED // ni vendu ni activé
+  CANCELLED
+  LOST
+  DESTROYED
+  ALREADY_USED
+  NOT_INSIDE // sortie demandée pour un billet qui n'est pas à l'intérieur
+  NO_REENTRY // sortie demandée alors que la catégorie n'autorise pas la réentrée
+  OUT_OF_SLOT
+  MANUAL_ENTRY // numéro saisi à la main : ne prouve pas l'authenticité
+  AMBIGUOUS_NUMBER // numéro saisi présent dans plusieurs catégories : préciser la catégorie
+  EVENT_CLOSED
+}
+
+enum ScanMode {
+  ENTRY
+  EXIT
+}
+
+/// Toute lecture au contrôle, y compris refusée, est conservée (section 7.2).
+model Scan {
+  id              String      @id @default(uuid()) @db.Uuid
+  /// Identifiant d'opération fourni par le poste : une requête répétée ne compte jamais deux fois
+  operationId     String      @unique
+  eventId         String      @db.Uuid
+  event           Event       @relation(fields: [eventId], references: [id])
+  gateId          String      @db.Uuid
+  gate            Gate        @relation(fields: [gateId], references: [id])
+  controllerId    String      @db.Uuid
+  deviceId        String?
+  mode            ScanMode    @default(ENTRY)
+  ticketId        String?     @db.Uuid
+  ticket          Ticket?     @relation(fields: [ticketId], references: [id])
+  maskedValue     String // valeur lue masquée (jamais la valeur complète)
+  verdict         ScanVerdict
+  reason          ScanReason
+  /// Admission exceptionnelle (dérogation supervisée)
+  exception       Boolean     @default(false)
+  exceptionReason String?
+  /// Lecture à l'origine d'une dérogation
+  overridesScanId String?     @db.Uuid
+  serverTime      DateTime    @default(now())
+
+  @@index([eventId, serverTime])
+  @@index([eventId, gateId, serverTime])
+  @@index([ticketId])
+}
+
+/// Incident signalé par un contrôleur (appel du superviseur, litige, problème matériel).
+model GateIncident {
+  id           String    @id @default(uuid()) @db.Uuid
+  eventId      String    @db.Uuid
+  event        Event     @relation(fields: [eventId], references: [id])
+  gateId       String    @db.Uuid
+  controllerId String    @db.Uuid
+  message      String
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?   @db.Uuid
+  resolution   String?
+
+  @@index([eventId, resolvedAt])
+}
+
+// ─── Journal d'audit ─────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  actorId    String?  @db.Uuid
+  eventId    String?  @db.Uuid
+  action     String
+  objectType String
+  objectId   String?
+  before     Json?
+  after      Json?
+  context    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([eventId, createdAt])
+  @@index([objectType, objectId])
+}
+
+// ─── Services d'arrière-plan ─────────────────────────────────────────────────
+
+/// Signal de vie des processus annexes (service de génération des PDF).
+model ServiceHeartbeat {
+  name   String   @id
+  beatAt DateTime
+  info   Json?
+}

@@ -1,0 +1,97 @@
+# Production de la billetterie sur un VPS. Copié sur le serveur à chaque déploiement (/opt/billetterie).
+# Les secrets sont dans /opt/billetterie/.env (jamais dans le dépôt) ; modèle : deploy/.env.example.
+
+name: billetterie
+
+x-app: &app
+  image: ${IMAGE:-ghcr.io/owner/billetterie}:${IMAGE_TAG:-latest}
+  restart: unless-stopped
+  environment:
+    DATABASE_URL: postgresql://billetterie:${POSTGRES_PASSWORD}@db:5432/billetterie?schema=public
+    QR_ENCRYPTION_KEY: ${QR_ENCRYPTION_KEY}
+    STORAGE_DIR: /app/storage
+    TZ: Africa/Conakry
+  volumes:
+    - storage:/app/storage
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: billetterie
+      POSTGRES_USER: billetterie
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billetterie -d billetterie"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Applique les migrations de la base avant le démarrage de l'application (à chaque déploiement).
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["npx", "prisma", "migrate", "deploy"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  app:
+    <<: *app
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  # Service de génération des PDF : un seul exemplaire.
+  worker:
+    <<: *app
+    command: ["npm", "run", "worker:prod"]
+    healthcheck: { disable: true }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+  # Sauvegarde quotidienne (base + fichiers), 14 jours conservés dans /opt/billetterie/backups.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: billetterie
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: billetterie
+      BACKUP_HOUR: ${BACKUP_HOUR:-3}
+      RETENTION_DAYS: ${RETENTION_DAYS:-14}
+      TZ: Africa/Conakry
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - ./backups:/backups
+      - storage:/storage:ro
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    depends_on:
+      db: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  storage:
+  caddy_data:
+  caddy_config:

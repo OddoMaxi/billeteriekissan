@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.github
+storage
+.test-storage
+public/pdf.worker.min.mjs
+.env
+.env.*
+!.env.example
+*.log
+test
+coverage
+deploy
