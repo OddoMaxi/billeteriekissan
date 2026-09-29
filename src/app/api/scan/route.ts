@@ -8,7 +8,6 @@ const body = z.object({
   value: z.string().min(1).max(500),
   operationId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/),
   deviceId: z.string().max(64).optional(),
-  mode: z.enum(["ENTRY", "EXIT"]).optional(),
 });
 
 /** Lecture d'un billet au contrôle : verdict décidé et enregistré par le serveur. */

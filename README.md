@@ -82,7 +82,7 @@ les lots restent en file et sont repris au redémarrage avec les mêmes billets.
 - `src/lib/batches.ts` : réservation des numéros, création des billets, rendu, reprise, réimpression.
 - `scripts/worker.ts` : service de génération (file d'attente des lots).
 - `src/lib/stock.ts` : remises, retours, pertes, activation, ventes, contre-écritures, versements, rapprochement.
-- `src/lib/scan.ts` : contrôle d'entrée (règles de validation, admission atomique, idempotence, réentrée, dérogation).
+- `src/lib/scan.ts` : contrôle d'entrée uniquement (règles de validation, admission atomique, idempotence, dérogation).
 - `src/app/(app)/control/[eventId]` : écran du contrôleur (flasheur Bluetooth en mode clavier, verdict plein écran, son, témoin réseau).
 - `src/lib/reports.ts` : indicateurs de la section 8 (billets par catégorie, recettes, caisses, entrées, écarts).
 - `src/lib/exports.ts` : exports CSV (Excel FR), classeur XLSX et rapport de clôture PDF.
@@ -97,5 +97,5 @@ Consignes pour les graphistes : [docs/GABARIT.md](docs/GABARIT.md).
 - [x] Étape 2 : modèles de billets (import du design, placement QR/numéro, aperçu, BAT, versions, profils d'impression)
 - [x] Étape 3 : génération des lots, PDF A4 (5 tickets/page, séquentiel ou piles), manifeste, reprise, réimpression
 - [x] Étape 4 : stock, remises avec accusé de réception, ventes déclarées (saisie ou flasheur), contre-écritures, activation, versements, rapprochement
-- [x] Étape 5 : contrôle d'entrée (flasheur, verdicts, admission atomique, réentrée, dérogation supervisée, supervision des portes)
+- [x] Étape 5 : contrôle d'entrée uniquement, une entrée par billet (flasheur, verdicts animés, admission atomique, dérogation supervisée, supervision des portes)
 - [x] Étape 6 : tableaux de bord (global et par événement), écarts, exports CSV / XLSX et rapport de clôture PDF

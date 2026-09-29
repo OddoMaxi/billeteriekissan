@@ -76,7 +76,7 @@ export default async function EventSettings({ params }: PageProps<"/events/[even
       )}
 
       <Card title="Catégories">
-        <Table head={["Nom", "Prix facial", "Quota", "Générés", "Créneau", "Portes", "Réentrée", ""]} empty={event.categories.length === 0}>
+        <Table head={["Nom", "Prix facial", "Quota", "Générés", "Créneau", "Portes", ""]} empty={event.categories.length === 0}>
           {event.categories.map((c) => (
             <tr key={c.id}>
               <Td className="font-medium">{c.name}</Td>
@@ -85,7 +85,6 @@ export default async function EventSettings({ params }: PageProps<"/events/[even
               <Td>{c._count.tickets.toLocaleString("fr-FR")}</Td>
               <Td className="text-xs">{c.slotStart || c.slotEnd ? `${formatDateTime(c.slotStart, tz)} → ${formatDateTime(c.slotEnd, tz)}` : "—"}</Td>
               <Td className="text-xs">{c.gateIds.length === 0 ? "Toutes" : event.gates.filter((g) => c.gateIds.includes(g.id)).map((g) => g.name).join(", ")}</Td>
-              <Td>{c.reentryAllowed ? "Oui" : "Non"}</Td>
               <Td>
                 {isAdmin && !locked && (
                   <details>
@@ -149,9 +148,6 @@ function CategoryForm({ eventId, tz, gates, category }: { eventId: string; tz: s
         </Field>
       </div>
       <Field label="Conditions d'accès"><input name="accessConditions" defaultValue={category?.accessConditions ?? ""} /></Field>
-      <label className="flex items-center gap-2">
-        <input type="checkbox" name="reentryAllowed" defaultChecked={category?.reentryAllowed} /> Réentrée autorisée
-      </label>
     </ActionForm>
   );
 }

@@ -193,19 +193,18 @@ describe("droits du contrôleur (R09)", () => {
   });
 });
 
-describe("réentrée", () => {
-  it("catégorie sans réentrée : pas de sortie", async () => {
-    expect(await scan(1, { mode: "EXIT" })).toMatchObject({ verdict: "REFUSED", reason: "NO_REENTRY" });
+describe("entrée uniquement : pas de sortie ni de réentrée", () => {
+  it("un billet donne droit à une seule entrée, même si la catégorie autorisait la réentrée", async () => {
+    // « Pass » a été créé avec reentryAllowed = true : l'option n'a plus d'effet.
+    expect((await scan(111)).reason).toBe("OK");
+    expect(await scan(111)).toMatchObject({ verdict: "REFUSED", reason: "ALREADY_USED" });
+    expect((await db.ticket.findFirstOrThrow({ where: ticketOf(111) })).entryCount).toBe(1);
   });
 
-  it("catégorie avec réentrée : entrée, sortie, réentrée ; jamais deux entrées sans sortie", async () => {
-    expect((await scan(111)).reason).toBe("OK");
-    expect((await scan(111)).reason).toBe("ALREADY_USED");
-    expect((await scan(111, { mode: "EXIT" })).reason).toBe("EXIT");
-    expect((await scan(111, { mode: "EXIT" })).reason).toBe("NOT_INSIDE");
-    expect(await scan(111)).toMatchObject({ verdict: "VALID", reason: "REENTRY" });
-    expect((await scan(111)).reason).toBe("ALREADY_USED");
-    expect((await db.ticket.findFirstOrThrow({ where: ticketOf(111) })).entryCount).toBe(2);
+  it("l'API ne propose plus de mode sortie", async () => {
+    // Un champ « mode » éventuellement envoyé par un ancien poste est ignoré : lecture d'entrée.
+    const r = await processScan({ eventId, gateId: gateA, controller: ctrl, value: qrOf(112), operationId: op(), ...({ mode: "EXIT" } as object) });
+    expect(r).toMatchObject({ verdict: "VALID", reason: "OK" });
   });
 });
 

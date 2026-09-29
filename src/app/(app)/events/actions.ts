@@ -144,7 +144,6 @@ const categorySchema = z.object({
   slotStart: z.string().optional(),
   slotEnd: z.string().optional(),
   gateIds: z.union([uuid, z.array(uuid)]).optional(),
-  reentryAllowed: z.literal("on").optional(),
 });
 
 export const saveCategory = formAction(async (form) => {
@@ -165,7 +164,8 @@ export const saveCategory = formAction(async (form) => {
     slotStart,
     slotEnd,
     gateIds,
-    reentryAllowed: data.reentryAllowed === "on",
+    // Contrôle à l'entrée uniquement : une seule admission par billet.
+    reentryAllowed: false,
   };
 
   await db.$transaction(async (tx) => {

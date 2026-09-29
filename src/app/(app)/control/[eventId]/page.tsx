@@ -9,13 +9,12 @@ export default async function ControlPage({ params, searchParams }: PageProps<"/
   const { eventId } = await params;
   const { gate: gateParam } = await searchParams;
   const access = await requireEventPermission(eventId, "scan.perform");
-  const [event, gates, reentry] = await Promise.all([
+  const [event, gates] = await Promise.all([
     db.event.findUniqueOrThrow({ where: { id: eventId } }),
     db.gate.findMany({
       where: { eventId, active: true, ...(access.controllerGateIds ? { id: { in: access.controllerGateIds } } : {}) },
       orderBy: { name: "asc" },
     }),
-    db.category.count({ where: { eventId, reentryAllowed: true } }),
   ]);
   const gate = gates.find((g) => g.id === gateParam);
   if (!gate && gates.length === 1) redirect(`/control/${eventId}?gate=${gates[0].id}`);
@@ -34,7 +33,7 @@ export default async function ControlPage({ params, searchParams }: PageProps<"/
         </p>
       )}
       {gate ? (
-        <Scanner eventId={eventId} gate={{ id: gate.id, name: gate.name }} canOverride={access.can("scan.override")} reentry={reentry > 0} tz={event.timezone} />
+        <Scanner eventId={eventId} gate={{ id: gate.id, name: gate.name }} canOverride={access.can("scan.override")} tz={event.timezone} />
       ) : gates.length === 0 ? (
         <p className="rounded-md bg-red-50 p-4 text-red-800">Aucune porte ouverte ne vous est affectée. Contactez l&apos;organisateur.</p>
       ) : (

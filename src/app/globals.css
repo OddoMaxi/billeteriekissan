@@ -14,3 +14,54 @@
     @apply mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600;
   }
 }
+
+/* ─── Écran de contrôle d'entrée ───────────────────────────────────────────── */
+
+@keyframes scan-laser {
+  0%, 100% { top: 10%; }
+  50% { top: 86%; }
+}
+@keyframes scan-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes scan-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes scan-shake {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(4px); }
+  30%, 50%, 70% { transform: translateX(-8px); }
+  40%, 60% { transform: translateX(8px); }
+}
+@keyframes scan-countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+@keyframes scan-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes scan-breathe {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+@keyframes scan-spin {
+  to { transform: rotate(360deg); }
+}
+
+.scan-laser { animation: scan-laser 2.4s ease-in-out infinite; }
+.scan-laser-fast { animation: scan-laser 0.7s ease-in-out infinite; }
+.scan-pop { animation: scan-pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+.scan-draw { stroke-dasharray: 60; stroke-dashoffset: 60; animation: scan-draw 0.45s 0.15s ease-out forwards; }
+.scan-shake { animation: scan-shake 0.5s ease-in-out both; }
+.scan-countdown { transform-origin: left; animation-name: scan-countdown; animation-timing-function: linear; animation-fill-mode: forwards; }
+.scan-fade-up { animation: scan-fade-up 0.35s ease-out both; }
+.scan-breathe { animation: scan-breathe 2s ease-in-out infinite; }
+.scan-spin { animation: scan-spin 0.8s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-laser, .scan-laser-fast, .scan-pop, .scan-shake, .scan-fade-up, .scan-breathe, .scan-spin { animation: none; }
+  .scan-draw { animation: none; stroke-dashoffset: 0; }
+}

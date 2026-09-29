@@ -119,13 +119,12 @@ export async function scansTable(eventId: string, tz: string, period: Period): P
   const name = await namesFor(scans.map((s) => s.controllerId));
   return {
     name: "Contrôle",
-    columns: ["Heure serveur", "Porte", "Contrôleur", "Poste", "Mode", "Billet", "Verdict", "Motif", "Dérogation", "Valeur lue (masquée)"],
+    columns: ["Heure serveur", "Porte", "Contrôleur", "Poste", "Billet", "Verdict", "Motif", "Dérogation", "Valeur lue (masquée)"],
     rows: scans.map((s) => [
       stamp(s.serverTime, tz),
       s.gate.name,
       name(s.controllerId),
       s.deviceId ?? "",
-      s.mode === "EXIT" ? "Sortie" : "Entrée",
       s.ticket && s.ticket.eventId === eventId ? formatNumber(s.ticket.number) : "",
       s.verdict === "VALID" ? "Valide" : s.verdict === "CHECK" ? "À vérifier" : "Refusé",
       s.reason,

@@ -1,5 +1,5 @@
 import "server-only";
-import type { Prisma, ScanMode, ScanReason, ScanVerdict } from "@prisma/client";
+import type { Prisma, ScanReason, ScanVerdict } from "@prisma/client";
 import { audit } from "./audit";
 import { isWellFormedQr, maskQr, sha256 } from "./crypto";
 import { db } from "./db";
@@ -7,7 +7,10 @@ import { formatNumber } from "./numbering";
 import { can, type Actor } from "./permissions";
 
 // Contrôle d'entrée (section 7). Le serveur décide seul de la validité :
-// droits du contrôleur, événement, porte, billet, état commercial, blocage, créneau, réentrée.
+// droits du contrôleur, événement, porte, billet, état commercial, blocage, créneau.
+// Contrôle à l'entrée uniquement (décision du 29/09/2026) : un billet donne droit à une seule entrée,
+// sans lecture de sortie ni réentrée. Les motifs EXIT, REENTRY, NOT_INSIDE et NO_REENTRY restent
+// connus de la base pour l'historique, mais ne sont plus produits.
 // L'admission est une transition conditionnelle unique « non utilisé → utilisé » : si deux postes
 // lisent le même billet au même instant, un seul obtient VALIDE. Chaque lecture porte un
 // identifiant d'opération : une requête répétée (double signal, relance) renvoie le même verdict.
@@ -172,13 +175,11 @@ export type ScanInput = {
   value: string;
   operationId: string;
   deviceId?: string | null;
-  mode?: ScanMode;
 };
 
 /** Traite une lecture. Idempotent par `operationId`. */
 export async function processScan(input: ScanInput): Promise<ScanResult> {
   if (!/^[A-Za-z0-9_-]{8,64}$/.test(input.operationId)) throw new ScanError("Identifiant d'opération invalide.", 400);
-  const mode: ScanMode = input.mode ?? "ENTRY";
   const value = input.value.trim().slice(0, 500);
   const event = await db.event.findUniqueOrThrow({ where: { id: input.eventId } });
   const tz = event.timezone;
@@ -202,7 +203,6 @@ export async function processScan(input: ScanInput): Promise<ScanResult> {
             gateId: gate.id,
             controllerId: input.controller.id,
             deviceId: input.deviceId?.slice(0, 64) || null,
-            mode,
             ticketId,
             maskedValue: maskQr(value),
             verdict,
@@ -240,17 +240,8 @@ export async function processScan(input: ScanInput): Promise<ScanResult> {
       if (manual) {
         const denied = admissionProblem(ticket, cat, gate.id);
         if (denied) return record("REFUSED", denied, ticket.id);
-        if (ticket.entryState === "USED" && !(cat.reentryAllowed && ticket.exitedAt)) return record("REFUSED", "ALREADY_USED", ticket.id);
+        if (ticket.entryState === "USED") return record("REFUSED", "ALREADY_USED", ticket.id);
         return record("CHECK", "MANUAL_ENTRY", ticket.id);
-      }
-
-      if (mode === "EXIT") {
-        if (!cat.reentryAllowed) return record("REFUSED", "NO_REENTRY", ticket.id);
-        const r = await tx.ticket.updateMany({
-          where: { id: ticket.id, entryState: "USED", exitedAt: null },
-          data: { exitedAt: new Date() },
-        });
-        return record(r.count === 1 ? "VALID" : "REFUSED", r.count === 1 ? "EXIT" : "NOT_INSIDE", ticket.id);
       }
 
       const denied = admissionProblem(ticket, cat, gate.id);
@@ -267,13 +258,6 @@ export async function processScan(input: ScanInput): Promise<ScanResult> {
       });
       if (first.count === 1) return record("VALID", "OK", ticket.id);
 
-      if (cat.reentryAllowed) {
-        const again = await tx.ticket.updateMany({
-          where: { id: ticket.id, entryState: "USED", exitedAt: { not: null } },
-          data: { exitedAt: null, entryCount: { increment: 1 } },
-        });
-        if (again.count === 1) return record("VALID", "REENTRY", ticket.id);
-      }
       return record("REFUSED", "ALREADY_USED", ticket.id);
     });
     return toResult(scan, false, tz);
@@ -378,9 +362,9 @@ export async function resolveIncident(p: { incidentId: string; actor: Actor; res
 /** Entrées et refus par porte, motifs de refus, admissions exceptionnelles. */
 export async function gateStats(eventId: string) {
   const [byGate, byReason, inside, admitted, exceptions] = await Promise.all([
-    db.scan.groupBy({ by: ["gateId", "verdict"], where: { eventId, mode: "ENTRY" }, _count: true }),
+    db.scan.groupBy({ by: ["gateId", "verdict"], where: { eventId }, _count: true }),
     db.scan.groupBy({ by: ["reason"], where: { eventId, verdict: { not: "VALID" } }, _count: true }),
-    db.ticket.count({ where: { eventId, entryState: "USED", exitedAt: null } }),
+    db.ticket.count({ where: { eventId, entryState: "USED" } }),
     db.ticket.count({ where: { eventId, entryState: "USED" } }),
     db.scan.count({ where: { eventId, exception: true } }),
   ]);

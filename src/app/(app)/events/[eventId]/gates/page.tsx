@@ -53,7 +53,7 @@ export default async function GatesPage({ params }: PageProps<"/events/[eventId]
       <AutoRefresh active={event.status === "OPEN"} intervalMs={10_000} />
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Entrés" value={stats.admitted.toLocaleString("fr-FR")} sub={`sur ${issuable.toLocaleString("fr-FR")} billets vendus ou activés`} />
-        <Stat label="À l'intérieur" value={stats.inside.toLocaleString("fr-FR")} sub="hors sorties enregistrées" />
+        <Stat label="Refus" value={stats.byReason.reduce((a, r) => a + r._count, 0).toLocaleString("fr-FR")} sub="lectures non admises" />
         <Stat label="Admissions par dérogation" value={stats.exceptions} />
         <Stat label="Incidents ouverts" value={open.length} />
       </div>
@@ -121,7 +121,6 @@ export default async function GatesPage({ params }: PageProps<"/events/[eventId]
                 <Badge color={s.verdict === "VALID" ? "green" : s.verdict === "CHECK" ? "orange" : "red"}>
                   {s.verdict === "VALID" ? "Valide" : s.verdict === "CHECK" ? "À vérifier" : "Refusé"}
                 </Badge>
-                {s.mode === "EXIT" && <span className="ml-1 text-xs">(sortie)</span>}
               </Td>
               <Td className="text-xs">
                 {REASON_LABELS[s.reason]}
