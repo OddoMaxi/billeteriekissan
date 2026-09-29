@@ -50,3 +50,4 @@ next-env.d.ts
 
 # sauvegardes locales éventuelles
 /deploy/backups
+/undefined
