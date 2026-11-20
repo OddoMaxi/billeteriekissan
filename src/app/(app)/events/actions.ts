@@ -218,6 +218,17 @@ export async function toggleGate(eventId: string, gateId: string) {
   revalidatePath(`/events/${eventId}/settings`);
 }
 
+/** Autorise ou non le contrôle hors connexion (les postes gardent la liste des empreintes des billets). */
+export async function toggleOfflineScan(eventId: string) {
+  const access = await requireEventPermission(eventId, "event.configure");
+  await db.$transaction(async (tx) => {
+    const event = await tx.event.findUniqueOrThrow({ where: { id: eventId } });
+    await tx.event.update({ where: { id: eventId }, data: { offlineScan: !event.offlineScan } });
+    await audit(tx, { actorId: access.user.id, eventId, action: "event.offlineScan", objectType: "Event", objectId: eventId, after: { offlineScan: !event.offlineScan } });
+  });
+  revalidatePath(`/events/${eventId}/settings`);
+}
+
 // ─── Équipe ──────────────────────────────────────────────────────────────────
 
 const ROLES = ["ORGANIZER", "TICKET_MANAGER", "SELLER", "CONTROLLER", "AUDITOR"] as const;

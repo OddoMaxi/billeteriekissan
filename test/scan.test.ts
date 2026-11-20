@@ -6,7 +6,8 @@ import { createBatch } from "@/lib/batches";
 import { decryptSecret, sha256Buffer } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import type { Actor } from "@/lib/permissions";
-import { overrideAdmission, processScan, ScanError, type ScanController } from "@/lib/scan";
+import { OfflineIndex, sha256Hex, type LocalEntry, type Snapshot } from "@/app/(app)/control/[eventId]/offline";
+import { offlineSnapshot, overrideAdmission, processScan, ScanError, type ScanController } from "@/lib/scan";
 import { assignTickets, confirmMovement, declareIncident, recordSale, setActivation } from "@/lib/stock";
 import { saveFile } from "@/lib/storage";
 import { DEFAULT_LAYOUT } from "@/lib/template-layout";
@@ -252,5 +253,95 @@ describe("saisie manuelle et dérogation supervisée", () => {
   it("une lecture refusée ne peut pas être forcée", async () => {
     const refused = await scan(82);
     await expect(overrideAdmission({ scanId: refused.scanId, actor: orga, reason: "Je force", operationId: op() })).rejects.toThrow(/dérogation/);
+  });
+});
+
+describe("contrôle hors connexion", () => {
+  const snapFor = async (gateId = gateA) => (await offlineSnapshot({ eventId, gateId, controller: ctrl })) as Snapshot;
+  const offlineScan = (ref: number, verdict: "VALID" | "REFUSED" | "CHECK", reason: string, over: Partial<Parameters<typeof processScan>[0]> = {}) =>
+    scan(ref, { offline: { deviceTime: new Date(Date.now() - 60_000), verdict, reason: reason as never }, ...over });
+
+  it("la liste ne contient que des empreintes, jamais les valeurs des QR", async () => {
+    const snap = await snapFor();
+    expect(snap.disabled).toBe(false);
+    expect(snap.tickets.length).toBe(130);
+    const raw = JSON.stringify(snap);
+    for (const ref of [10, 101, 124]) expect(raw).not.toContain(qrOf(ref));
+    expect(snap.version).toBe((await snapFor()).version); // stable tant que rien ne change
+  });
+
+  it("le verdict local suit les mêmes règles que le serveur", async () => {
+    const idx = new OfflineIndex(await snapFor());
+    const local = new Map<string, LocalEntry>();
+    const judge = async (value: string) => idx.verdict(value, await sha256Hex(value), local, Date.now());
+
+    expect(await judge(qrOf(10))).toMatchObject({ verdict: "VALID", reason: "OK", number: "010", category: "Standard" });
+    expect(await judge(qrOf(1))).toMatchObject({ verdict: "REFUSED", reason: "ALREADY_USED", previous: { gate: "Porte A" } });
+    expect(await judge(qrOf(81))).toMatchObject({ verdict: "REFUSED", reason: "CANCELLED" });
+    expect(await judge(qrOf(101))).toMatchObject({ verdict: "REFUSED", reason: "FORBIDDEN_GATE" });
+    expect(await judge(qrOf(124))).toMatchObject({ verdict: "CHECK", reason: "OUT_OF_SLOT" });
+    // Non vendu d'après la liste : il a pu être vendu depuis, le superviseur tranche.
+    expect(await judge(qrOf(80))).toMatchObject({ verdict: "CHECK", reason: "NOT_ACTIVATED" });
+    expect(await judge("B1." + "x".repeat(32))).toMatchObject({ verdict: "REFUSED", reason: "UNKNOWN" });
+    expect(await judge("https://exemple.com")).toMatchObject({ verdict: "REFUSED", reason: "UNKNOWN" });
+    expect(await judge(qr.get(`${otherCat}:1`)!)).toMatchObject({ verdict: "REFUSED", reason: "UNKNOWN" });
+    // Saisie manuelle : jamais d'admission directe.
+    expect(await judge("Standard 011")).toMatchObject({ verdict: "CHECK", reason: "MANUAL_ENTRY" });
+    expect(await judge("006")).toMatchObject({ verdict: "REFUSED", reason: "AMBIGUOUS_NUMBER" });
+
+    // Billet admis par ce poste : refusé s'il repasse.
+    const first = await judge(qrOf(12));
+    local.set(first.hash!, { at: Date.now(), gateId: gateA });
+    expect(await judge(qrOf(12))).toMatchObject({ verdict: "REFUSED", reason: "ALREADY_USED" });
+  });
+
+  it("une entrée validée hors connexion est enregistrée à l'heure du poste", async () => {
+    const r = await offlineScan(20, "VALID", "OK");
+    expect(r).toMatchObject({ verdict: "VALID", reason: "OK" });
+    const s = await db.scan.findUniqueOrThrow({ where: { id: r.scanId } });
+    expect(s).toMatchObject({ offline: true, offlineVerdict: "VALID", offlineConflict: false });
+    const t = await db.ticket.findFirstOrThrow({ where: ticketOf(20) });
+    expect(t.entryState).toBe("USED");
+    expect(Math.abs(t.usedAt!.getTime() - s.deviceTime!.getTime())).toBeLessThan(1000);
+  });
+
+  it("billet déjà entré ailleurs pendant la coupure : conflit signalé", async () => {
+    expect((await scan(21, { gateId: gateB })).verdict).toBe("VALID");
+    const r = await offlineScan(21, "VALID", "OK");
+    expect(r).toMatchObject({ verdict: "REFUSED", reason: "ALREADY_USED" });
+    expect(await db.scan.findUniqueOrThrow({ where: { id: r.scanId } })).toMatchObject({ offline: true, offlineConflict: true });
+  });
+
+  it("lecture hors connexion non admise : simple trace, le billet reste utilisable", async () => {
+    const r = await offlineScan(22, "CHECK", "NOT_ACTIVATED");
+    expect(r).toMatchObject({ verdict: "CHECK", reason: "NOT_ACTIVATED" });
+    expect((await db.ticket.findFirstOrThrow({ where: ticketOf(22) })).entryState).toBe("NOT_USED");
+  });
+
+  it("événement fermé entre-temps : l'entrée faite hors connexion est quand même comptée", async () => {
+    await db.event.update({ where: { id: eventId }, data: { status: "CLOSED" } });
+    try {
+      expect(await offlineScan(23, "VALID", "OK")).toMatchObject({ verdict: "VALID" });
+    } finally {
+      await db.event.update({ where: { id: eventId }, data: { status: "OPEN" } });
+    }
+  });
+
+  it("renvoi d'une lecture hors connexion : une seule trace", async () => {
+    const id = op();
+    await offlineScan(24, "VALID", "OK", { operationId: id });
+    const again = await offlineScan(24, "VALID", "OK", { operationId: id });
+    expect(again).toMatchObject({ verdict: "VALID", replayed: true });
+    expect(await db.scan.count({ where: { operationId: id } })).toBe(1);
+  });
+
+  it("désactivé par l'organisateur : aucune liste n'est fournie", async () => {
+    await db.event.update({ where: { id: eventId }, data: { offlineScan: false } });
+    try {
+      expect(await offlineSnapshot({ eventId, gateId: gateA, controller: ctrl })).toEqual({ disabled: true });
+    } finally {
+      await db.event.update({ where: { id: eventId }, data: { offlineScan: true } });
+    }
+    await expect(offlineSnapshot({ eventId, gateId: gateA, controller: ctrlGateB })).rejects.toThrow(/pas affecté/);
   });
 });

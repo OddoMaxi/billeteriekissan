@@ -104,6 +104,8 @@ model Event {
   startsAt       DateTime
   endsAt         DateTime
   status         EventStatus  @default(DRAFT)
+  /// Contrôle hors connexion : les postes téléchargent les empreintes des billets et valident localement
+  offlineScan    Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -514,6 +516,14 @@ model Scan {
   /// Lecture à l'origine d'une dérogation
   overridesScanId String?     @db.Uuid
   serverTime      DateTime    @default(now())
+  /// Lecture faite hors connexion par le poste, envoyée au retour du réseau
+  offline         Boolean     @default(false)
+  /// Heure de la lecture sur le poste (lecture hors connexion)
+  deviceTime      DateTime?
+  /// Verdict affiché par le poste hors connexion
+  offlineVerdict  ScanVerdict?
+  /// Admis hors connexion alors que le serveur refuse (billet déjà entré ailleurs, copie…)
+  offlineConflict Boolean     @default(false)
 
   @@index([eventId, serverTime])
   @@index([eventId, gateId, serverTime])

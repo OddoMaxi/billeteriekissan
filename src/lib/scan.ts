@@ -175,7 +175,12 @@ export type ScanInput = {
   value: string;
   operationId: string;
   deviceId?: string | null;
+  /** Lecture faite hors connexion par le poste, transmise au retour du réseau. */
+  offline?: OfflineReading;
 };
+
+/** Ce que le poste a lu et affiché hors connexion. */
+export type OfflineReading = { deviceTime: Date; verdict: ScanVerdict; reason: ScanReason };
 
 /** Traite une lecture. Idempotent par `operationId`. */
 export async function processScan(input: ScanInput): Promise<ScanResult> {
@@ -193,6 +198,7 @@ export async function processScan(input: ScanInput): Promise<ScanResult> {
   }
 
   try {
+    const offline = input.offline;
     const scan = await db.$transaction(async (tx) => {
       const gate = await checkGate(tx, input.eventId, input.gateId, input.controller);
       const record = (verdict: ScanVerdict, reason: ScanReason, ticketId: string | null) =>
@@ -207,10 +213,19 @@ export async function processScan(input: ScanInput): Promise<ScanResult> {
             maskedValue: maskQr(value),
             verdict,
             reason,
+            ...(offline && {
+              offline: true,
+              deviceTime: offline.deviceTime,
+              offlineVerdict: offline.verdict,
+              // Le porteur est entré sur la foi du poste, mais le serveur n'aurait pas admis le billet.
+              offlineConflict: offline.verdict === "VALID" && verdict !== "VALID",
+            }),
           },
         });
 
-      if (event.status !== "OPEN") return record("REFUSED", "EVENT_CLOSED", null);
+      // Une lecture hors connexion est enregistrée même si l'événement a été fermé entre-temps :
+      // le porteur est déjà passé, il faut le compter.
+      if (event.status !== "OPEN" && !offline) return record("REFUSED", "EVENT_CLOSED", null);
 
       // Numéro tapé à la main : ne prouve pas l'authenticité. Mêmes contrôles qu'un scan, mais un billet
       // qui serait valide donne « à vérifier » (dérogation supervisée), jamais d'admission directe.
@@ -233,6 +248,11 @@ export async function processScan(input: ScanInput): Promise<ScanResult> {
       } else {
         ticket = await tx.ticket.findUnique({ where: { qrHash: sha256(value) }, include: { category: true } });
       }
+      // Lecture hors connexion non admise par le poste : simple trace, le billet n'est jamais marqué utilisé
+      // (le porteur n'est pas entré, ou attend le superviseur).
+      if (offline && offline.verdict !== "VALID") {
+        return record(offline.verdict, offline.reason, ticket && ticket.eventId === input.eventId ? ticket.id : null);
+      }
       if (!ticket) return record("REFUSED", "UNKNOWN", null);
       if (ticket.eventId !== input.eventId) return record("REFUSED", "OTHER_EVENT", ticket.id);
       if (ticket.blockState !== "NONE") return record("REFUSED", ticket.blockState, ticket.id);
@@ -246,8 +266,10 @@ export async function processScan(input: ScanInput): Promise<ScanResult> {
 
       const denied = admissionProblem(ticket, cat, gate.id);
       if (denied) return record("REFUSED", denied, ticket.id);
-      const now = new Date();
-      if ((cat.slotStart && now < cat.slotStart) || (cat.slotEnd && now > cat.slotEnd)) {
+      // Hors connexion : l'heure de passage est celle du poste (jamais dans le futur).
+      const now = offline ? new Date(Math.min(offline.deviceTime.getTime(), Date.now())) : new Date();
+      // Le créneau a déjà été vérifié par le poste hors connexion, à l'heure du passage.
+      if (!offline && ((cat.slotStart && now < cat.slotStart) || (cat.slotEnd && now > cat.slotEnd))) {
         return record("CHECK", "OUT_OF_SLOT", ticket.id);
       }
 
@@ -369,4 +391,70 @@ export async function gateStats(eventId: string) {
     db.scan.count({ where: { eventId, exception: true } }),
   ]);
   return { byGate, byReason, inside, admitted, exceptions };
+}
+
+// ─── Contrôle hors connexion ─────────────────────────────────────────────────
+
+/** État d'un billet dans la copie hors connexion (même ordre de contrôle que le serveur). */
+export const OFFLINE_STATE = { OK: 0, NOT_ACTIVATED: 1, USED: 2, CANCELLED: 3, LOST: 4, DESTROYED: 5 } as const;
+
+export type OfflineSnapshot =
+  | { disabled: true }
+  | {
+      disabled: false;
+      version: string;
+      generatedAt: string;
+      eventStatus: string;
+      timezone: string;
+      gate: { id: string; name: string };
+      gateNames: Record<string, string>;
+      /** Catégories : porte autorisée ici, créneau (ms depuis l'époque). */
+      categories: { name: string; allowedHere: boolean; slotStart: number | null; slotEnd: number | null }[];
+      /** [empreinte sha256 du QR, index de catégorie, numéro, état, heure d'entrée (ms), porte d'entrée] */
+      tickets: [string, number, number, number, number | null, string | null][];
+    };
+
+/**
+ * Copie de l'événement pour le contrôle hors connexion d'une porte.
+ * Ne contient que des empreintes : impossible d'en tirer un QR valide.
+ */
+export async function offlineSnapshot(p: { eventId: string; gateId: string; controller: ScanController }): Promise<OfflineSnapshot> {
+  const gate = await checkGate(db, p.eventId, p.gateId, p.controller);
+  const event = await db.event.findUniqueOrThrow({ where: { id: p.eventId } });
+  if (!event.offlineScan) return { disabled: true };
+  const [gates, categories, tickets] = await Promise.all([
+    db.gate.findMany({ where: { eventId: p.eventId }, select: { id: true, name: true } }),
+    db.category.findMany({ where: { eventId: p.eventId }, orderBy: { name: "asc" } }),
+    db.ticket.findMany({
+      where: { eventId: p.eventId },
+      select: { qrHash: true, categoryId: true, number: true, commercialState: true, activatedAt: true, blockState: true, entryState: true, usedAt: true, usedGateId: true },
+      orderBy: [{ categoryId: "asc" }, { number: "asc" }],
+    }),
+  ]);
+  const catIndex = new Map(categories.map((c, i) => [c.id, i]));
+  const body = {
+    eventStatus: event.status,
+    timezone: event.timezone,
+    gate: { id: gate.id, name: gate.name },
+    gateNames: Object.fromEntries(gates.map((g) => [g.id, g.name])),
+    categories: categories.map((c) => ({
+      name: c.name,
+      allowedHere: c.gateIds.length === 0 || c.gateIds.includes(gate.id),
+      slotStart: c.slotStart?.getTime() ?? null,
+      slotEnd: c.slotEnd?.getTime() ?? null,
+    })),
+    tickets: tickets.map((t): [string, number, number, number, number | null, string | null] => {
+      const state =
+        t.blockState !== "NONE"
+          ? OFFLINE_STATE[t.blockState]
+          : t.entryState === "USED"
+            ? OFFLINE_STATE.USED
+            : t.commercialState !== "SOLD" && !t.activatedAt
+              ? OFFLINE_STATE.NOT_ACTIVATED
+              : OFFLINE_STATE.OK;
+      return [t.qrHash, catIndex.get(t.categoryId)!, t.number, state, t.usedAt?.getTime() ?? null, t.usedGateId];
+    }),
+  };
+  const version = sha256(JSON.stringify(body)).slice(0, 24);
+  return { disabled: false, version, generatedAt: new Date().toISOString(), ...body };
 }

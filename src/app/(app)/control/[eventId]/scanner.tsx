@@ -1,6 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from "react";
+import { CameraFeed } from "./camera";
+import {
+  dequeue,
+  deleteSnapshot,
+  enqueue,
+  isQrValue,
+  loadLocalEntries,
+  loadSnapshot,
+  OfflineIndex,
+  queuedItems,
+  saveLocalEntry,
+  saveSnapshot,
+  sha256Hex,
+  type LocalEntry,
+  type Snapshot,
+} from "./offline";
 
 type Verdict = "VALID" | "REFUSED" | "CHECK";
 type ScanResult = {
@@ -15,6 +31,8 @@ type ScanResult = {
   overridable: boolean;
   serverTime: string;
   replayed: boolean;
+  /** Verdict rendu par le poste, sans connexion (envoyé au serveur plus tard). */
+  offline?: boolean;
 };
 type Display =
   | { kind: "idle" }
@@ -26,6 +44,11 @@ type Display =
 type HistoryItem = { id: number; at: string; title: string; detail: string | null; verdict: Verdict | "OFFLINE" };
 
 const TIMEOUT_MS = 4_000;
+/** Avec une liste hors connexion prête, on n'attend pas le serveur aussi longtemps avant de juger localement. */
+const TIMEOUT_WITH_FALLBACK_MS = 2_500;
+/** Rafraîchissement de la liste hors connexion tant que le réseau est là. */
+const SNAPSHOT_REFRESH_MS = 60_000;
+const SYNC_BATCH = 50;
 /** Même valeur relue dans ce délai = double signal du flasheur : même opération, même verdict. */
 const DOUBLE_SIGNAL_MS = 1_200;
 /** Retour automatique à « Prêt » après un verdict (les verdicts à vérifier restent affichés). */
@@ -68,9 +91,40 @@ function beep(kind: Verdict | "OFFLINE") {
   }
 }
 
-async function postJson(url: string, body: unknown): Promise<{ status: number; data: Record<string, unknown> } | null> {
+/** Préférence « caméra » du poste, conservée dans le navigateur. */
+const CAMERA_PREF = "controle-camera";
+const cameraListeners = new Set<() => void>();
+let cameraMemory: boolean | null = null; // repli si le stockage du navigateur est bloqué
+function subscribeCameraPref(cb: () => void) {
+  cameraListeners.add(cb);
+  return () => cameraListeners.delete(cb);
+}
+function readCameraPref(): boolean {
+  if (cameraMemory !== null) return cameraMemory;
+  try {
+    return localStorage.getItem(CAMERA_PREF) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeCameraPref(on: boolean) {
+  cameraMemory = on;
+  try {
+    localStorage.setItem(CAMERA_PREF, on ? "1" : "0");
+  } catch {}
+  cameraListeners.forEach((cb) => cb());
+}
+
+/** Vibration du téléphone (ignorée là où elle n'existe pas, ex. iPhone). */
+function vibrate(kind: Verdict | "OFFLINE") {
+  try {
+    navigator.vibrate?.(kind === "VALID" ? 80 : kind === "CHECK" ? [300] : [180, 90, 180]);
+  } catch {}
+}
+
+async function postJson(url: string, body: unknown, timeoutMs = TIMEOUT_MS): Promise<{ status: number; data: Record<string, unknown> } | null> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
     return { status: res.status, data: await res.json().catch(() => ({})) };
@@ -102,17 +156,19 @@ function VerdictIcon({ kind }: { kind: Verdict | "OFFLINE" }) {
 }
 
 /** Cadre de visée avec ligne de balayage ; accélère quand un billet est en cours de lecture. */
-function ScanFrame({ reading }: { reading: boolean }) {
-  const corner = "absolute h-9 w-9 border-[5px] transition-colors " + (reading ? "border-sky-400" : "border-slate-500");
+function ScanFrame({ reading, camera = false }: { reading: boolean; camera?: boolean }) {
+  const corner = "absolute h-9 w-9 border-[5px] transition-colors " + (reading ? "border-sky-400" : camera ? "border-white" : "border-slate-500");
   return (
-    <div className="relative mx-auto h-40 w-40 sm:h-48 sm:w-48">
+    <div className={`relative mx-auto ${camera ? "h-56 w-56 sm:h-64 sm:w-64" : "h-40 w-40 sm:h-48 sm:w-48"}`}>
       <span className={`${corner} left-0 top-0 rounded-tl-2xl border-b-0 border-r-0`} />
       <span className={`${corner} right-0 top-0 rounded-tr-2xl border-b-0 border-l-0`} />
       <span className={`${corner} bottom-0 left-0 rounded-bl-2xl border-r-0 border-t-0`} />
       <span className={`${corner} bottom-0 right-0 rounded-br-2xl border-l-0 border-t-0`} />
+      {!camera && (
       <svg viewBox="0 0 24 24" className={`absolute inset-0 m-auto h-20 w-20 ${reading ? "text-sky-300" : "scan-breathe text-slate-600"}`} fill="currentColor">
         <path d="M3 3h7v7H3V3zm2 2v3h3V5H5zm9-2h7v7h-7V3zm2 2v3h3V5h-3zM3 14h7v7H3v-7zm2 2v3h3v-3H5zm9-2h2v2h-2v-2zm2 2h2v2h-2v-2zm2-2h3v2h-3v-2zm-4 4h2v3h-2v-3zm4 0h3v3h-3v-3zm-2 2h2v1h-2v-1z" />
       </svg>
+      )}
       <span
         className={`absolute left-3 right-3 h-0.5 rounded-full ${
           reading ? "scan-laser-fast bg-sky-300 shadow-[0_0_12px_2px_rgba(56,189,248,0.8)]" : "scan-laser bg-emerald-400/80 shadow-[0_0_10px_1px_rgba(52,211,153,0.6)]"
@@ -141,15 +197,149 @@ export function Scanner({ eventId, gate, canOverride, tz }: { eventId: string; g
   const [incident, setIncident] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [manual, setManual] = useState(false);
+  // Lecture par la caméra du téléphone (préférence propre au poste ; désactivée au rendu serveur).
+  const camera = useSyncExternalStore(subscribeCameraPref, readCameraPref, () => false);
   const inputRef = useRef<HTMLInputElement>(null);
   const manualRef = useRef<HTMLInputElement>(null);
   const last = useRef<{ value: string; at: number; operationId: string } | null>(null);
   const device = useRef("");
   const seq = useRef(0);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Contrôle hors connexion : liste des billets (empreintes), admissions connues du poste, lectures à envoyer.
+  const [offlineIdx, setOfflineIdx] = useState<OfflineIndex | null>(null);
+  const [offlineOff, setOfflineOff] = useState(false);
+  const [pending, setPending] = useState(0);
+  const [checkedAt, setCheckedAt] = useState<string | null>(null); // dernière vérification réussie de la liste
+  const idxRef = useRef<OfflineIndex | null>(null);
+  const localEntries = useRef(new Map<string, LocalEntry>());
+  const onlineRef = useRef(true);
+  const flushing = useRef(false);
+  const lastLocal = useRef<{ operationId: string; result: ScanResult } | null>(null);
+
+  const markOnline = useCallback((v: boolean) => {
+    onlineRef.current = v;
+    setOnline(v);
+  }, []);
+  const applyIndex = useCallback((idx: OfflineIndex | null) => {
+    idxRef.current = idx;
+    setOfflineIdx(idx);
+  }, []);
 
   useEffect(() => {
     device.current = deviceId();
+  }, []);
+
+  /** Envoie au serveur les lectures faites hors connexion, dans l'ordre, par paquets. */
+  const flushQueue = useCallback(async () => {
+    if (flushing.current) return;
+    flushing.current = true;
+    try {
+      for (;;) {
+        const items = await queuedItems(eventId);
+        setPending(items.length);
+        if (items.length === 0) return;
+        const batch = items
+          .slice(0, SYNC_BATCH)
+          .map((i) => ({ operationId: i.operationId, gateId: i.gateId, value: i.value, deviceTime: i.deviceTime, verdict: i.verdict, reason: i.reason }));
+        const r = await postJson("/api/scan/sync", { eventId, deviceId: device.current, items: batch }, 15_000);
+        if (!r) return markOnline(false);
+        if (r.status !== 200) {
+          setNotice(
+            r.status === 401
+              ? `Session fermée : reconnectez-vous pour envoyer ${items.length} lecture(s) faite(s) hors connexion.`
+              : `Envoi des lectures hors connexion impossible : ${String(r.data.error ?? "erreur du serveur")}`,
+          );
+          return;
+        }
+        const results = r.data.results as { operationId: string; ok: boolean; conflict?: boolean; error?: string }[];
+        await dequeue(results.map((x) => x.operationId));
+        const conflicts = results.filter((x) => x.conflict).length;
+        const failed = results.filter((x) => !x.ok);
+        if (conflicts > 0) {
+          setNotice(`⚠ ${conflicts} entrée(s) validée(s) hors connexion refusée(s) par le serveur (billet déjà entré ailleurs, copie…). Le superviseur est informé.`);
+        } else if (failed.length > 0) {
+          setNotice(`${failed.length} lecture(s) hors connexion non enregistrée(s) : ${failed[0].error}`);
+        }
+      }
+    } catch {
+      // Stockage ou réseau indisponible : nouvel essai au prochain passage.
+    } finally {
+      flushing.current = false;
+    }
+  }, [eventId, markOnline]);
+
+  /** Télécharge la liste hors connexion de la porte (seulement si elle a changé). */
+  const refreshSnapshot = useCallback(async () => {
+    if (!globalThis.crypto?.subtle) return; // http : empreintes impossibles à calculer, pas de mode hors connexion
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20_000);
+    try {
+      const current = idxRef.current?.snap.version;
+      const res = await fetch(`/api/scan/offline?eventId=${eventId}&gateId=${gate.id}`, {
+        cache: "no-store",
+        headers: current ? { "If-None-Match": `"${current}"` } : {},
+        signal: ctrl.signal,
+      });
+      if (res.status === 304) return setCheckedAt(new Date().toISOString());
+      if (!res.ok) return;
+      const data = (await res.json()) as Snapshot | { disabled: true };
+      if (data.disabled) {
+        setOfflineOff(true);
+        applyIndex(null);
+        await deleteSnapshot(eventId, gate.id);
+        return;
+      }
+      setOfflineOff(false);
+      applyIndex(new OfflineIndex(data));
+      setCheckedAt(data.generatedAt);
+      await saveSnapshot(eventId, data);
+    } catch {
+      // Réseau coupé pendant le téléchargement : on garde la liste précédente.
+    } finally {
+      clearTimeout(timer);
+    }
+  }, [eventId, gate.id, applyIndex]);
+
+  // Au démarrage : liste et lectures en attente gardées sur le poste, puis mise à jour régulière.
+  useEffect(() => {
+    let stop = false;
+    void (async () => {
+      const [snap, entries, queue] = await Promise.all([loadSnapshot(eventId, gate.id), loadLocalEntries(eventId), queuedItems(eventId)]);
+      if (stop) return;
+      localEntries.current = entries;
+      setPending(queue.length);
+      if (snap && !idxRef.current) applyIndex(new OfflineIndex(snap));
+      void refreshSnapshot();
+    })();
+    const id = setInterval(() => {
+      if (onlineRef.current) void refreshSnapshot();
+    }, SNAPSHOT_REFRESH_MS);
+    return () => {
+      stop = true;
+      clearInterval(id);
+    };
+  }, [eventId, gate.id, refreshSnapshot, applyIndex]);
+
+  // Service worker : l'écran de contrôle se rouvre sans connexion (en production uniquement).
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) return;
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then(async () => {
+        await navigator.serviceWorker.ready;
+        // Fichiers chargés avant l'installation du service worker : copiés pour une réouverture hors connexion.
+        const own = performance
+          .getEntriesByType("resource")
+          .map((e) => e.name)
+          .filter((u) => {
+            const url = new URL(u);
+            return url.origin === location.origin && url.pathname.startsWith("/_next/static/");
+          });
+        const statics = await caches.open("controle-static-v1");
+        await Promise.all(own.map((u) => statics.match(u).then((hit) => (hit ? undefined : statics.add(u))).catch(() => {})));
+        await (await caches.open("controle-pages-v1")).add(location.href).catch(() => {});
+      })
+      .catch(() => {});
   }, []);
 
   // Champ de lecture (invisible) toujours prêt : on y revient dès que le focus se perd dans le vide.
@@ -169,9 +359,11 @@ export function Scanner({ eventId, gate, canOverride, tz }: { eventId: string; g
       const t = setTimeout(() => ctrl.abort(), 3000);
       try {
         const r = await fetch("/api/health", { cache: "no-store", signal: ctrl.signal });
-        if (!stop) setOnline(r.ok);
+        if (stop) return;
+        markOnline(r.ok);
+        if (r.ok) void flushQueue();
       } catch {
-        if (!stop) setOnline(false);
+        if (!stop) markOnline(false);
       } finally {
         clearTimeout(t);
       }
@@ -182,10 +374,10 @@ export function Scanner({ eventId, gate, canOverride, tz }: { eventId: string; g
       stop = true;
       clearInterval(id);
     };
-  }, []);
+  }, [markOnline, flushQueue]);
 
   const now = useCallback(
-    () => new Intl.DateTimeFormat("fr-FR", { timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date()),
+    (at?: string) => new Intl.DateTimeFormat("fr-FR", { timeZone: tz, hour: "2-digit", minute: "2-digit", ...(at ? {} : { second: "2-digit" }) }).format(at ? new Date(at) : new Date()),
     [tz],
   );
   const pushHistory = useCallback((item: Omit<HistoryItem, "id">) => setHistory((h) => [{ ...item, id: ++seq.current }, ...h].slice(0, 8)), []);
@@ -200,37 +392,108 @@ export function Scanner({ eventId, gate, canOverride, tz }: { eventId: string; g
   const showResult = useCallback(
     (result: ScanResult) => {
       show({ kind: "result", result, key: ++seq.current }, RESET_MS[result.verdict]);
-      pushHistory({ at: now(), title: result.title, detail: result.number ? `${result.category} ${result.number}` : null, verdict: result.verdict });
+      const detail = [result.number ? `${result.category} ${result.number}` : null, result.offline ? "hors ligne" : null].filter(Boolean).join(" · ");
+      pushHistory({ at: now(), title: result.title, detail: detail || null, verdict: result.verdict });
       if (result.verdict === "VALID" && !result.replayed) setAdmitted((n) => n + 1);
       if (sound) beep(result.verdict);
+      vibrate(result.verdict);
     },
     [now, pushHistory, show, sound],
+  );
+
+  /** Retient qu'un billet est entré par ce poste (pour le refuser s'il repasse, même hors connexion). */
+  const rememberEntry = useCallback(
+    (hash: string, at: number) => {
+      const entry = { at, gateId: gate.id };
+      localEntries.current.set(hash, entry);
+      return saveLocalEntry(eventId, hash, entry).catch(() => {});
+    },
+    [eventId, gate.id],
+  );
+
+  /** Verdict rendu par le poste à partir de la liste hors connexion ; la lecture part au serveur plus tard. */
+  const judgeLocally = useCallback(
+    async (value: string, operationId: string, idx: OfflineIndex) => {
+      const at = Date.now();
+      const hash = isQrValue(value) ? await sha256Hex(value) : null;
+      const v = idx.verdict(value, hash, localEntries.current, at);
+      // La lecture est gardée sur le poste avant d'afficher le verdict : rien ne se perd si la page se ferme aussitôt.
+      let stored = true;
+      try {
+        await Promise.all([
+          enqueue({ operationId, eventId, gateId: gate.id, value, deviceTime: new Date(at).toISOString(), verdict: v.verdict, reason: v.reason }),
+          v.verdict === "VALID" && v.hash ? rememberEntry(v.hash, at) : null,
+        ]);
+        setPending((n) => n + 1);
+      } catch {
+        stored = false;
+      }
+      const result: ScanResult = {
+        scanId: "",
+        verdict: v.verdict,
+        reason: v.reason,
+        title: v.title,
+        message: v.message,
+        number: v.number,
+        category: v.category,
+        previous: v.previous,
+        overridable: false,
+        serverTime: new Date(at).toISOString(),
+        replayed: false,
+        offline: true,
+      };
+      lastLocal.current = { operationId, result };
+      showResult(result);
+      if (!stored) setNotice("Attention : cette lecture n'a pas pu être gardée sur le poste (stockage du navigateur indisponible).");
+    },
+    [eventId, gate.id, rememberEntry, showResult],
   );
 
   const send = useCallback(
     async (value: string, operationId: string) => {
       if (resetTimer.current) clearTimeout(resetTimer.current);
-      setDisplay({ kind: "pending" });
       setOverrideReason("");
       setNotice(null);
-      const r = await postJson("/api/scan", { eventId, gateId: gate.id, value, operationId, deviceId: device.current });
+      // Double signal d'une lecture déjà jugée hors connexion : même verdict, rien de plus.
+      if (lastLocal.current?.operationId === operationId) {
+        showResult({ ...lastLocal.current.result, replayed: true });
+        return;
+      }
+      const idx = idxRef.current;
+      if (!onlineRef.current && idx) return judgeLocally(value, operationId, idx);
+      setDisplay({ kind: "pending" });
+      const r = await postJson(
+        "/api/scan",
+        { eventId, gateId: gate.id, value, operationId, deviceId: device.current },
+        idx ? TIMEOUT_WITH_FALLBACK_MS : TIMEOUT_MS,
+      );
+      // Serveur injoignable (réseau coupé, serveur en panne) : verdict local si la liste est prête.
+      if (!r || r.status >= 502) {
+        markOnline(false);
+        if (idx) return judgeLocally(value, operationId, idx);
+      }
       if (!r) {
-        // Jamais « valide » sans réponse du serveur.
-        setOnline(false);
+        // Jamais « valide » sans réponse du serveur ni liste hors connexion.
         show({ kind: "offline", value, operationId, key: ++seq.current }, null);
         pushHistory({ at: now(), title: "CONNEXION INDISPONIBLE", detail: null, verdict: "OFFLINE" });
         if (sound) beep("OFFLINE");
+        vibrate("OFFLINE");
         return;
       }
-      setOnline(true);
+      markOnline(true);
       if (r.status !== 200) {
         show({ kind: "error", message: String(r.data.error ?? "Erreur du serveur."), session: r.status === 401, key: ++seq.current }, null);
         if (sound) beep("REFUSED");
         return;
       }
-      showResult(r.data as unknown as ScanResult);
+      const result = r.data as unknown as ScanResult;
+      showResult(result);
+      if (result.verdict === "VALID" && isQrValue(value)) {
+        const hash = await sha256Hex(value);
+        if (hash) rememberEntry(hash, Date.now());
+      }
     },
-    [eventId, gate.id, now, pushHistory, show, showResult, sound],
+    [eventId, gate.id, judgeLocally, markOnline, now, pushHistory, rememberEntry, show, showResult, sound],
   );
 
   function submit(raw: string) {
@@ -288,7 +551,9 @@ export function Scanner({ eventId, gate, canOverride, tz }: { eventId: string; g
           ? "bg-gradient-to-b from-red-500 to-red-700"
           : verdictKind === "OFFLINE"
             ? "bg-slate-800 ring-2 ring-red-500/60"
-            : "bg-slate-900";
+            : camera
+              ? "bg-black/35"
+              : "bg-slate-900";
   const resetMs = result ? RESET_MS[result.verdict] : null;
 
   return (
@@ -319,8 +584,26 @@ export function Scanner({ eventId, gate, canOverride, tz }: { eventId: string; g
           className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium ${online ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/20 text-red-300"}`}
         >
           <span className={`h-2 w-2 rounded-full ${online ? "bg-emerald-400" : "animate-pulse bg-red-400"}`} />
-          {online ? "En ligne" : "Hors connexion"}
+          {online ? "En ligne" : offlineIdx ? "Hors connexion · contrôle local" : "Hors connexion"}
         </span>
+        {!offlineOff &&
+          (offlineIdx ? (
+            <span
+              className="rounded-full bg-white/10 px-3 py-1 text-slate-300"
+              title={`${offlineIdx.size.toLocaleString("fr-FR")} billets gardés sur ce poste pour le contrôle sans connexion`}
+            >
+              💾 Liste à jour {now(checkedAt ?? offlineIdx.snap.generatedAt)}
+            </span>
+          ) : (
+            <span className="rounded-full bg-amber-500/20 px-3 py-1 text-amber-200" title="Le contrôle sans connexion n'est pas encore prêt sur ce poste">
+              Hors ligne non prêt
+            </span>
+          ))}
+        {pending > 0 && (
+          <span className="rounded-full bg-sky-500/20 px-3 py-1 tabular-nums text-sky-200" title="Lectures faites hors connexion, envoyées dès le retour du réseau">
+            ⏳ {pending} à envoyer
+          </span>
+        )}
         <span className="rounded-full bg-white/10 px-3 py-1 tabular-nums" title="Entrées validées sur ce poste depuis l'ouverture de la page">
           ✓ {admitted} entrée{admitted > 1 ? "s" : ""}
         </span>
@@ -345,6 +628,16 @@ export function Scanner({ eventId, gate, canOverride, tz }: { eventId: string; g
           <button
             onClick={(e) => {
               e.stopPropagation();
+              writeCameraPref(!camera);
+            }}
+            className={`rounded-full px-3 py-1 ${camera ? "bg-sky-500 text-white" : "bg-white/15"}`}
+            title="Lire les billets avec la caméra de l'appareil"
+          >
+            📷 Caméra
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
               setManual((m) => !m);
             }}
             className={`rounded-full px-3 py-1 ${manual ? "bg-sky-500 text-white" : "bg-white/15"}`}
@@ -355,7 +648,10 @@ export function Scanner({ eventId, gate, canOverride, tz }: { eventId: string; g
         </div>
       </div>
 
-      {/* Scène principale : la clé relance les animations à chaque nouveau verdict. */}
+      {/* Scène principale : la clé relance les animations à chaque nouveau verdict.
+          Le flux caméra est hors de la scène pour ne pas être redémarré à chaque verdict. */}
+      <div className="relative">
+      {camera && <CameraFeed active={display.kind === "idle"} onCode={submit} />}
       <div
         key={"key" in display ? display.key : display.kind === "pending" ? "pending" : "ready"}
         className={`relative flex min-h-[22rem] flex-col items-center justify-center overflow-hidden rounded-2xl px-6 py-8 text-center transition-colors duration-300 sm:min-h-[26rem] ${stageBg} ${verdictKind === "REFUSED" ? "scan-shake" : ""}`}
@@ -364,9 +660,11 @@ export function Scanner({ eventId, gate, canOverride, tz }: { eventId: string; g
       >
         {(display.kind === "idle" || display.kind === "reading") && (
           <div className="scan-fade-up">
-            <ScanFrame reading={display.kind === "reading"} />
-            <div className="mt-6 text-3xl font-black tracking-tight sm:text-4xl">{display.kind === "reading" ? "Lecture…" : "Prêt"}</div>
-            <div className="mt-2 text-slate-400">{display.kind === "reading" ? "Billet détecté" : "Présentez le QR du billet au lecteur"}</div>
+            <ScanFrame reading={display.kind === "reading"} camera={camera} />
+            <div className="mt-6 text-3xl font-black tracking-tight drop-shadow sm:text-4xl">{display.kind === "reading" ? "Lecture…" : "Prêt"}</div>
+            <div className={`mt-2 drop-shadow ${camera ? "text-white/90" : "text-slate-400"}`}>
+              {display.kind === "reading" ? "Billet détecté" : camera ? "Visez le QR du billet avec la caméra" : "Présentez le QR du billet au lecteur"}
+            </div>
           </div>
         )}
 
@@ -391,6 +689,9 @@ export function Scanner({ eventId, gate, canOverride, tz }: { eventId: string; g
               </div>
             )}
             <div className="mt-4 text-lg font-medium sm:text-xl">{result.message}</div>
+            {result.offline && (
+              <div className="mt-3 inline-block rounded-full bg-black/25 px-3 py-1 text-sm font-semibold uppercase tracking-wide">Hors connexion</div>
+            )}
             {result.replayed && <div className="mt-2 text-sm opacity-80">Lecture déjà traitée : même verdict</div>}
           </div>
         )}
@@ -431,6 +732,7 @@ export function Scanner({ eventId, gate, canOverride, tz }: { eventId: string; g
             <div className="scan-countdown h-full bg-white/70" style={{ animationDuration: `${resetMs}ms` }} />
           </div>
         )}
+      </div>
       </div>
 
       {/* Saisie manuelle (visible uniquement sur demande) */}

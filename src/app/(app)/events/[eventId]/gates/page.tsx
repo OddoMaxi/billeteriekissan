@@ -34,15 +34,26 @@ export default async function GatesPage({ params }: PageProps<"/events/[eventId]
   const { eventId } = await params;
   const access = await requireEventPermission(eventId, "gates.view");
   const canResolve = access.can("scan.override");
-  const [event, gates, stats, incidents, scans, issuable] = await Promise.all([
+  const [event, gates, stats, incidents, scans, issuable, conflicts, offlineCount] = await Promise.all([
     db.event.findUniqueOrThrow({ where: { id: eventId } }),
     db.gate.findMany({ where: { eventId }, orderBy: { name: "asc" } }),
     gateStats(eventId),
     db.gateIncident.findMany({ where: { eventId }, orderBy: [{ resolvedAt: { sort: "asc", nulls: "first" } }, { createdAt: "desc" }], take: 30 }),
     db.scan.findMany({ where: { eventId }, orderBy: { serverTime: "desc" }, take: 60, include: { ticket: { select: { number: true, eventId: true, category: { select: { name: true } } } } } }),
     db.ticket.count({ where: { eventId, blockState: "NONE", OR: [{ commercialState: "SOLD" }, { activatedAt: { not: null } }] } }),
+    db.scan.findMany({
+      where: { eventId, offlineConflict: true },
+      orderBy: { deviceTime: "desc" },
+      take: 50,
+      include: { ticket: { select: { number: true, usedAt: true, usedGateId: true, category: { select: { name: true } } } } },
+    }),
+    db.scan.count({ where: { eventId, offline: true } }),
   ]);
-  const name = await namesFor([...incidents.flatMap((i) => [i.controllerId, i.resolvedById]), ...scans.map((s) => s.controllerId)]);
+  const name = await namesFor([
+    ...incidents.flatMap((i) => [i.controllerId, i.resolvedById]),
+    ...scans.map((s) => s.controllerId),
+    ...conflicts.map((s) => s.controllerId),
+  ]);
   const gateName = new Map(gates.map((g) => [g.id, g.name]));
   const count = (gateId: string, verdict: string) => stats.byGate.find((x) => x.gateId === gateId && x.verdict === verdict)?._count ?? 0;
   const tz = event.timezone;
@@ -58,6 +69,29 @@ export default async function GatesPage({ params }: PageProps<"/events/[eventId]
         <Stat label="Incidents ouverts" value={open.length} />
       </div>
 
+      {conflicts.length > 0 && (
+        <Card title={`Entrées hors connexion en conflit (${conflicts.length})`}>
+          <p className="mb-3 text-sm text-slate-600">
+            Ces billets ont été validés par un poste sans connexion, mais le serveur les refuse : le porteur est entré
+            alors que le billet était déjà utilisé ailleurs (copie probable), annulé ou non valable à cette porte.
+          </p>
+          <Table head={["Heure du passage", "Porte", "Contrôleur", "Billet", "Motif côté serveur", "Première entrée"]}>
+            {conflicts.map((s) => (
+              <tr key={s.id} className="bg-red-50">
+                <Td className="whitespace-nowrap text-xs tabular-nums">{formatDateTime(s.deviceTime ?? s.serverTime, tz)}</Td>
+                <Td>{gateName.get(s.gateId)}</Td>
+                <Td className="text-xs">{name(s.controllerId)}</Td>
+                <Td className="font-mono text-xs">{s.ticket ? `${s.ticket.category.name} ${formatNumber(s.ticket.number)}` : s.maskedValue}</Td>
+                <Td className="text-xs">{REASON_LABELS[s.reason]}</Td>
+                <Td className="text-xs">
+                  {s.ticket?.usedAt ? `${formatDateTime(s.ticket.usedAt, tz)}${s.ticket.usedGateId ? ` · ${gateName.get(s.ticket.usedGateId)}` : ""}` : "—"}
+                </Td>
+              </tr>
+            ))}
+          </Table>
+        </Card>
+      )}
+
       <Card title="Par porte">
         <Table head={["Porte", "Valides", "Refusés", "À vérifier", "État"]} empty={gates.length === 0}>
           {gates.map((g) => (
@@ -70,6 +104,9 @@ export default async function GatesPage({ params }: PageProps<"/events/[eventId]
             </tr>
           ))}
         </Table>
+        {offlineCount > 0 && (
+          <p className="mt-3 text-sm text-slate-600">{offlineCount.toLocaleString("fr-FR")} lecture(s) faite(s) hors connexion puis envoyée(s) par les postes.</p>
+        )}
         {stats.byReason.length > 0 && (
           <p className="mt-3 text-sm text-slate-600">
             Motifs de non-admission :{" "}
@@ -113,7 +150,10 @@ export default async function GatesPage({ params }: PageProps<"/events/[eventId]
         <Table head={["Heure", "Porte", "Contrôleur", "Billet", "Verdict", "Motif"]} empty={scans.length === 0}>
           {scans.map((s) => (
             <tr key={s.id}>
-              <Td className="whitespace-nowrap text-xs tabular-nums">{formatDateTime(s.serverTime, tz)}</Td>
+              <Td className="whitespace-nowrap text-xs tabular-nums">
+                {formatDateTime(s.deviceTime ?? s.serverTime, tz)}
+                {s.offline && <span className="ml-1 text-slate-500">(hors ligne)</span>}
+              </Td>
               <Td>{gateName.get(s.gateId)}</Td>
               <Td className="text-xs">{name(s.controllerId)}</Td>
               <Td className="font-mono text-xs">{s.ticket && s.ticket.eventId === eventId ? `${s.ticket.category.name} ${formatNumber(s.ticket.number)}` : s.maskedValue}</Td>
@@ -123,7 +163,7 @@ export default async function GatesPage({ params }: PageProps<"/events/[eventId]
                 </Badge>
               </Td>
               <Td className="text-xs">
-                {REASON_LABELS[s.reason]}
+                {s.offlineConflict && <Badge color="red">Conflit</Badge>} {REASON_LABELS[s.reason]}
                 {s.exception && s.exceptionReason && ` — ${s.exceptionReason}`}
               </Td>
             </tr>

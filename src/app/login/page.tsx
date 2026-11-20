@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { ClearOfflinePages } from "./clear-offline-pages";
 import { LoginForm } from "./login-form";
 
 export default async function LoginPage() {
@@ -10,6 +11,7 @@ export default async function LoginPage() {
         <h1 className="mb-1 text-xl font-bold">Billetterie</h1>
         <p className="mb-6 text-sm text-slate-500">Connexion à votre espace</p>
         <LoginForm />
+        <ClearOfflinePages />
       </div>
     </main>
   );

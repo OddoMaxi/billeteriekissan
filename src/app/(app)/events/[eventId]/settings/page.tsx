@@ -5,7 +5,7 @@ import { requireEventPermission } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { EVENT_STATUS_LABELS } from "@/lib/labels";
 import { formatDateTime, formatGnf, toLocalInput } from "@/lib/time";
-import { createGate, saveCategory, setEventStatus, toggleGate, updateEvent } from "../../actions";
+import { createGate, saveCategory, setEventStatus, toggleGate, toggleOfflineScan, updateEvent } from "../../actions";
 
 const NEXT_STATUSES = { DRAFT: ["OPEN"], OPEN: ["CLOSED"], CLOSED: ["OPEN", "ARCHIVED"], ARCHIVED: [] } as const;
 
@@ -119,6 +119,22 @@ export default async function EventSettings({ params }: PageProps<"/events/[even
             </li>
           ))}
         </ul>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md bg-slate-50 p-3 text-sm">
+          <div>
+            <strong>Contrôle sans connexion :</strong>{" "}
+            {event.offlineScan ? <Badge color="green">Autorisé</Badge> : <Badge color="red">Désactivé</Badge>}
+            <p className="mt-1 text-slate-600">
+              Les postes gardent la liste des billets (empreintes uniquement) et continuent de valider si internet coupe.
+              Risque : pendant une coupure, une copie de billet peut passer à deux portes différentes ; c&apos;est signalé au
+              retour du réseau.
+            </p>
+          </div>
+          {canConfigure && (
+            <form action={toggleOfflineScan.bind(null, event.id)}>
+              <button className="text-blue-700 hover:underline">{event.offlineScan ? "Désactiver" : "Autoriser"}</button>
+            </form>
+          )}
+        </div>
         {canConfigure && !locked && (
           <ActionForm action={createGate} submitLabel="Ajouter" className="flex items-end gap-3">
             <input type="hidden" name="eventId" value={event.id} />
