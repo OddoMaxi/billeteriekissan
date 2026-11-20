@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
-import { Badge, Card, Field } from "@/components/ui";
+import { Badge, Card, Field, Notice } from "@/components/ui";
 import { requireEventPermission } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { layoutSchema } from "@/lib/template-layout";
@@ -29,11 +29,11 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Link href={`/events/${eventId}/templates`} className="text-sm text-blue-700 hover:underline">← Modèles</Link>
+        <Link href={`/events/${eventId}/templates`} className="text-sm link">← Modèles</Link>
         <h2 className="text-xl font-bold">{t.name} · version {t.version}</h2>
         {t.batApprovedAt ? <Badge color="green">BAT validé</Badge> : <Badge color="orange">BAT à valider</Badge>}
       </div>
-      {created && <p className="mb-4 rounded-md bg-green-50 p-3 text-sm text-green-800">Version {t.version} créée. Elle doit passer un nouveau BAT avant la production.</p>}
+      {created && <p className="mb-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">Version {t.version} créée. Elle doit passer un nouveau BAT avant la production.</p>}
 
       <Card title="Design">
         <dl className="grid gap-2 text-sm sm:grid-cols-4">
@@ -43,9 +43,9 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
           <div><dt className="text-slate-500">Importé le</dt><dd>{formatDateTime(t.createdAt, tz)}</dd></div>
         </dl>
         {t.designWarnings.length > 0 && (
-          <ul className="mt-3 space-y-1 text-sm text-orange-700">
-            {t.designWarnings.map((w) => <li key={w}>⚠ {w}</li>)}
-          </ul>
+          <div className="mt-4 space-y-2">
+            {t.designWarnings.map((w) => <Notice key={w} compact level="warning">{w}</Notice>)}
+          </div>
         )}
       </Card>
 
@@ -74,7 +74,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
 
         <div className="mt-6 border-t border-slate-200 pt-4">
           {t.batApprovedAt ? (
-            <p className="text-sm text-green-800">
+            <p className="text-sm text-emerald-800">
               BAT validé le {formatDateTime(t.batApprovedAt, tz)} par {approver?.name ?? "—"}. Cette version est figée et utilisable pour la production.
             </p>
           ) : (
@@ -112,7 +112,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
           <ul className="space-y-1 text-sm">
             {versions.map((v) => (
               <li key={v.id}>
-                <Link href={`/events/${eventId}/templates/${v.id}`} className={v.id === t.id ? "font-semibold" : "text-blue-700 hover:underline"}>
+                <Link href={`/events/${eventId}/templates/${v.id}`} className={v.id === t.id ? "font-semibold" : "link"}>
                   Version {v.version}
                 </Link>{" "}
                 · {formatDateTime(v.createdAt, tz)} · {v.batApprovedAt ? "BAT validé" : "BAT à valider"}

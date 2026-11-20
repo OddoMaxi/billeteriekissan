@@ -1,4 +1,4 @@
-import { Card, Stat, Table, Td } from "@/components/ui";
+import { Card, Notice, Stat, Table, Td } from "@/components/ui";
 import type { EventAccess } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { periodLabel } from "@/lib/exports";
@@ -43,8 +43,8 @@ export async function EventDashboard({ access, from, to }: { access: EventAccess
           Au
           <input type="date" name="to" defaultValue={to} className="!w-40" />
         </label>
-        <button className="rounded-md border border-slate-300 bg-white px-3 py-2 font-medium hover:bg-slate-100">Filtrer</button>
-        {qs && <a href="?" className="py-2 text-blue-700 hover:underline">Toute la période</a>}
+        <button className="btn btn-secondary">Filtrer</button>
+        {qs && <a href="?" className="py-2 link">Toute la période</a>}
         <span className="ml-auto py-2 text-slate-500">
           Mis à jour à {updated}
           {event.status === "OPEN" && " · actualisation automatique toutes les 30 s"}
@@ -54,7 +54,7 @@ export async function EventDashboard({ access, from, to }: { access: EventAccess
         États des billets : instantané actuel. Ventes, versements et entrées : {periodLabel(period, tz)}.
       </p>
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Stat label="Billets vendus" value={n(t.sold)} sub={`${n(t.activatedNotSold)} activés sans vente · ${n(t.generated)} générés`} />
         <Stat label="Entrées" value={n(t.used)} sub={`${pct(t.used, admissible)} des billets vendus ou activés`} />
         <Stat label="Recettes nettes déclarées" value={formatGnf(m.netGnf)} sub={`théoriques : ${formatGnf(t.theoreticalGnf)}`} />
@@ -63,16 +63,15 @@ export async function EventDashboard({ access, from, to }: { access: EventAccess
 
       <Card title="Écarts et points d'attention">
         {r.anomalies.length === 0 ? (
-          <p className="text-sm text-green-700">Aucun écart : stocks, mouvements et caisses concordent.</p>
+          <Notice level="success">Aucun écart : stocks, mouvements et caisses concordent.</Notice>
         ) : (
-          <ul className="space-y-1 text-sm">
+          <div className="space-y-2">
             {r.anomalies.map((a, i) => (
-              <li key={i} className={a.level === "error" ? "font-semibold text-red-700" : a.level === "warning" ? "text-orange-700" : "text-slate-700"}>
-                {a.level === "error" ? "✗ " : a.level === "warning" ? "⚠ " : "• "}
+              <Notice key={i} compact level={a.level === "error" ? "error" : a.level === "warning" ? "warning" : "info"}>
                 {a.message}
-              </li>
+              </Notice>
             ))}
-          </ul>
+          </div>
         )}
       </Card>
 
@@ -164,10 +163,10 @@ export async function EventDashboard({ access, from, to }: { access: EventAccess
         <Card title="Exports">
           <p className="mb-3 text-sm text-slate-600">Période appliquée : {periodLabel(period, tz)}. Chaque export indique son auteur et sa date, et il est journalisé.</p>
           <div className="flex flex-wrap gap-2 text-sm">
-            <a href={exportUrl({ format: "pdf" })} className="rounded-md bg-blue-700 px-3 py-2 font-semibold text-white hover:bg-blue-800">Rapport de clôture (PDF)</a>
-            <a href={exportUrl({ format: "xlsx" })} className="rounded-md bg-green-700 px-3 py-2 font-semibold text-white hover:bg-green-800">Classeur complet (XLSX)</a>
+            <a href={exportUrl({ format: "pdf" })} className="btn btn-primary">Rapport de clôture (PDF)</a>
+            <a href={exportUrl({ format: "xlsx" })} className="btn btn-primary">Classeur complet (XLSX)</a>
             {([["tickets", "Billets"], ["sales", "Ventes"], ["payments", "Versements"], ["scans", "Contrôle"], ["movements", "Mouvements"]] as const).map(([k, label]) => (
-              <a key={k} href={exportUrl({ format: "csv", table: k })} className="rounded-md border border-slate-300 bg-white px-3 py-2 font-medium hover:bg-slate-100">
+              <a key={k} href={exportUrl({ format: "csv", table: k })} className="btn btn-secondary">
                 {label} (CSV)
               </a>
             ))}

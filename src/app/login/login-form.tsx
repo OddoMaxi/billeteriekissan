@@ -6,7 +6,7 @@ import { loginAction } from "./actions";
 export function LoginForm() {
   const [state, action, pending] = useActionState(loginAction, null);
   return (
-    <form action={action} className="space-y-4">
+    <form action={action} className="space-y-5">
       <label className="block">
         E-mail
         <input name="email" type="email" autoComplete="username" required autoFocus defaultValue={state?.email} key={state?.email} />
@@ -18,7 +18,7 @@ export function LoginForm() {
       {state?.error && <p className="text-sm text-red-700" role="alert">{state.error}</p>}
       <button
         disabled={pending}
-        className="w-full rounded-md bg-blue-700 py-2.5 font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+        className="btn btn-primary btn-lg w-full"
       >
         {pending ? "Connexion…" : "Se connecter"}
       </button>

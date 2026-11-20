@@ -1,6 +1,7 @@
 "use client";
 
 import jsQR from "jsqr";
+import { Flashlight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 /** Intervalle entre deux analyses d'image (ms) : assez rapide, sans vider la batterie. */
@@ -173,9 +174,10 @@ export function CameraFeed({ active, onCode }: { active: boolean; onCode: (value
       {torch !== null && active && !error && (
         <button
           onClick={toggleTorch}
-          className={`absolute right-3 top-3 z-20 rounded-full px-3 py-1.5 text-sm font-semibold ${torch ? "bg-amber-300 text-slate-900" : "bg-black/50 text-white"}`}
+          className={`absolute right-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${torch ? "bg-amber-300 text-slate-900" : "bg-black/50 text-white"}`}
         >
-          {torch ? "🔦 Lampe allumée" : "🔦 Lampe"}
+          <Flashlight className="h-4 w-4" />
+          {torch ? "Lampe allumée" : "Lampe"}
         </button>
       )}
     </>

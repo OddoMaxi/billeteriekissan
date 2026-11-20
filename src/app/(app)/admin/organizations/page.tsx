@@ -31,7 +31,7 @@ export default async function OrganizationsPage() {
               <Td>{o.status === "ACTIVE" ? <Badge color="green">Actif</Badge> : <Badge color="red">Désactivé</Badge>}</Td>
               <Td className="text-right">
                 <form action={setOrganizationStatus.bind(null, o.id, o.status === "ACTIVE" ? "DISABLED" : "ACTIVE")}>
-                  <button className="text-sm text-blue-700 hover:underline">
+                  <button className="text-sm link">
                     {o.status === "ACTIVE" ? "Désactiver" : "Réactiver"}
                   </button>
                 </form>

@@ -65,7 +65,7 @@ export default async function TeamPage({ params }: PageProps<"/events/[eventId]/
               </select>
             </Field>
           </div>
-          <fieldset className="rounded-md border border-dashed border-slate-300 p-4">
+          <fieldset className="rounded-xl border border-dashed border-slate-300 p-4">
             <legend className="px-1 text-sm text-slate-600">Si le compte n&apos;existe pas encore</legend>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Nom complet"><input name="name" /></Field>

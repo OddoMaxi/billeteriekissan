@@ -1,34 +1,33 @@
-import Link from "next/link";
+import { AppShell, type NavSection } from "@/components/app-shell";
 import { requireUser } from "@/lib/auth";
 import { logoutAction } from "../login/actions";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
+  const sections: NavSection[] = [
+    {
+      items: [
+        ...(user.isAdmin ? [{ href: "/dashboard", label: "Tableau de bord", icon: "dashboard" as const }] : []),
+        { href: "/events", label: "Événements", icon: "events" },
+      ],
+    },
+    ...(user.isAdmin
+      ? [
+          {
+            title: "Administration",
+            items: [
+              { href: "/admin/organizations", label: "Organismes", icon: "organizations" as const },
+              { href: "/admin/users", label: "Comptes", icon: "users" as const },
+              { href: "/admin/print-profiles", label: "Impression", icon: "print" as const },
+              { href: "/admin/audit", label: "Journal d'audit", icon: "audit" as const },
+            ],
+          },
+        ]
+      : []),
+  ];
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-slate-200 bg-white">
-        <nav className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-sm">
-          <Link href="/" className="font-bold">Billetterie</Link>
-          <Link href="/events" className="hover:underline">Événements</Link>
-          {user.isAdmin && <Link href="/dashboard" className="hover:underline">Tableau de bord</Link>}
-          {user.isAdmin && (
-            <>
-              <Link href="/admin/organizations" className="hover:underline">Organismes</Link>
-              <Link href="/admin/users" className="hover:underline">Comptes</Link>
-              <Link href="/admin/print-profiles" className="hover:underline">Impression</Link>
-              <Link href="/admin/audit" className="hover:underline">Audit</Link>
-            </>
-          )}
-          <span className="ml-auto text-slate-500">
-            {user.name}
-            {user.isAdmin && " · administrateur"}
-          </span>
-          <form action={logoutAction}>
-            <button className="text-slate-600 hover:underline">Déconnexion</button>
-          </form>
-        </nav>
-      </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
-    </div>
+    <AppShell sections={sections} user={{ name: user.name, role: user.isAdmin ? "Administrateur" : "Membre" }} logout={logoutAction}>
+      {children}
+    </AppShell>
   );
 }

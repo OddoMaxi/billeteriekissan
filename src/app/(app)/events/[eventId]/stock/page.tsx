@@ -75,13 +75,13 @@ export default async function StockPage({ params }: PageProps<"/events/[eventId]
         <Card title="Mouvements en attente">
           <div className="space-y-3">
             {pending.map((m) => (
-              <div key={m.id} className="flex flex-wrap items-center gap-3 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm">
+              <div key={m.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
                 <span className="grow">
                   <strong>{MOVEMENT_LABELS[m.kind]}</strong> de {m.quantity} billet(s) · {name(m.fromUserId)} → {name(m.toUserId)} · {formatTicketRanges(m.tickets.map((t) => t.ticket), 6)} · {formatDateTime(m.createdAt, tz)}
                 </span>
                 {canManage && m.kind === "RETURN" && (
                   <form action={confirmMovementAction.bind(null, eventId, m.id)}>
-                    <button className="rounded-md bg-green-700 px-3 py-1.5 font-semibold text-white">Confirmer le retour</button>
+                    <button className="btn btn-primary">Confirmer le retour</button>
                   </form>
                 )}
                 {canManage && (
@@ -132,7 +132,7 @@ export default async function StockPage({ params }: PageProps<"/events/[eventId]
           </Card>
 
           <Card title="Perte, dommage, annulation (billets non vendus)">
-            <ActionForm action={incidentAction} submitLabel="Bloquer définitivement">
+            <ActionForm action={incidentAction} submitLabel="Bloquer définitivement" variant="danger">
               <input type="hidden" name="eventId" value={eventId} />
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Nature">

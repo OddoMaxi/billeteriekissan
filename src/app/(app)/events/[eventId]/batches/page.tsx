@@ -30,7 +30,7 @@ export default async function BatchesPage({ params }: PageProps<"/events/[eventI
           {batches.map((b) => (
             <tr key={b.id}>
               <Td>
-                <Link href={`/events/${eventId}/batches/${b.id}`} className="font-medium text-blue-700 hover:underline">
+                <Link href={`/events/${eventId}/batches/${b.id}`} className="font-medium link">
                   {b.category.name} {formatNumber(b.firstNumber)} → {formatNumber(b.lastNumber)}
                 </Link>
               </Td>

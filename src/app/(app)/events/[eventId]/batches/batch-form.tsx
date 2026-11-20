@@ -88,7 +88,7 @@ export function BatchForm({
       </div>
 
       {valid && (
-        <div className="rounded-md bg-slate-50 p-4 text-sm">
+        <div className="rounded-xl bg-slate-50 p-4 text-sm">
           <p>
             Numéros prévus en {category?.label} : <strong>{formatNumber(nextNumber)}</strong> à <strong>{formatNumber(nextNumber + quantity - 1)}</strong>{" "}
             <span className="text-slate-500">(attribués définitivement à la génération)</span>
@@ -106,7 +106,7 @@ export function BatchForm({
             </p>
           )}
           {overQuota && <p className="mt-1 font-medium text-red-700">Quantité supérieure au quota disponible de la catégorie.</p>}
-          <a href={previewUrl} target="_blank" className="mt-3 inline-block rounded-md border border-slate-300 bg-white px-3 py-1.5 font-medium hover:bg-slate-100">
+          <a href={previewUrl} target="_blank" className="mt-3 btn btn-secondary">
             Aperçu : première planche et dernière page
           </a>
         </div>
@@ -120,7 +120,7 @@ export function BatchForm({
         <button
           type="submit"
           disabled={pending || !valid || overQuota || !confirmed}
-          className="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+          className="btn btn-primary"
         >
           {pending ? "Génération…" : `Générer ${valid ? quantity.toLocaleString("fr-FR") : ""} billets`}
         </button>

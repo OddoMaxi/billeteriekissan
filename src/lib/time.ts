@@ -49,5 +49,5 @@ export function isValidTimeZone(tz: string): boolean {
 }
 
 export function formatGnf(amount: number): string {
-  return `${new Intl.NumberFormat("fr-FR").format(amount)} GNF`;
+  return `${new Intl.NumberFormat("fr-FR").format(amount)}\u00a0GNF`;
 }

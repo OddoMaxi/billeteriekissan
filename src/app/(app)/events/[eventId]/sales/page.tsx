@@ -50,7 +50,7 @@ export default async function SalesPage({ params, searchParams }: PageProps<"/ev
 
   return (
     <>
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Stat label="Billets vendus (déclarés)" value={total.sold.toLocaleString("fr-FR")} sub={`${activatedUnsold.toLocaleString("fr-FR")} activés sans vente déclarée`} />
         <Stat label="Recettes nettes déclarées" value={formatGnf(total.net)} sub={total.refunds ? `dont ${formatGnf(total.refunds)} remboursés` : undefined} />
         <Stat label="Versements validés" value={formatGnf(total.paid)} />
@@ -70,7 +70,7 @@ export default async function SalesPage({ params, searchParams }: PageProps<"/ev
               <Td>{formatGnf(a.paymentsValidatedGnf)}</Td>
               <Td>{a.paymentsPendingGnf ? <Badge color="orange">{formatGnf(a.paymentsPendingGnf)}</Badge> : "—"}</Td>
               <Td className="font-semibold">{formatGnf(a.balanceGnf)}</Td>
-              <Td><a href={`?seller=${a.sellerId}`} className="text-blue-700 hover:underline">détail</a></Td>
+              <Td><a href={`?seller=${a.sellerId}`} className="link">détail</a></Td>
             </tr>
           ))}
         </Table>
@@ -81,7 +81,7 @@ export default async function SalesPage({ params, searchParams }: PageProps<"/ev
         <Card title="Versements à valider">
           <div className="space-y-3">
             {pendingPayments.map((p) => (
-              <div key={p.id} className="flex flex-wrap items-center gap-3 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm">
+              <div key={p.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
                 <span className="grow">
                   <strong>{formatGnf(p.amountGnf)}</strong> de {name(p.sellerId)} · {PAYMENT_METHOD_LABELS[p.method]}{p.reference && ` · ${p.reference}`} · {formatDateTime(p.declaredAt, tz)}
                 </span>
@@ -135,10 +135,10 @@ export default async function SalesPage({ params, searchParams }: PageProps<"/ev
       )}
 
       <Card title={sellerFilter ? `Ventes de ${name(sellerFilter)}` : "Journal des ventes"}>
-        {sellerFilter && <a href="?" className="mb-3 inline-block text-sm text-blue-700 hover:underline">← Tous les vendeurs</a>}
+        {sellerFilter && <a href="?" className="mb-3 inline-block text-sm link">← Tous les vendeurs</a>}
         <Table head={["Date", "Vendeur", "Billets", "Facial", "Remise", "Montant", "Moyen", "Saisi par", ""]} empty={sales.length === 0}>
           {sales.map((s) => (
-            <tr key={s.id} className={s.kind === "REVERSAL" ? "bg-orange-50/60" : ""}>
+            <tr key={s.id} className={s.kind === "REVERSAL" ? "bg-amber-50/60" : ""}>
               <Td className="whitespace-nowrap text-xs">{formatDateTime(s.soldAt, tz)}</Td>
               <Td>{name(s.sellerId)}</Td>
               <Td className="text-xs">

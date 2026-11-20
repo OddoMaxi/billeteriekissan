@@ -113,13 +113,13 @@ export default async function EventSettings({ params }: PageProps<"/events/[even
               <span>{g.name} {!g.active && <Badge color="red">Inactive</Badge>}</span>
               {canConfigure && (
                 <form action={toggleGate.bind(null, event.id, g.id)}>
-                  <button className="text-blue-700 hover:underline">{g.active ? "Désactiver" : "Réactiver"}</button>
+                  <button className="link">{g.active ? "Désactiver" : "Réactiver"}</button>
                 </form>
               )}
             </li>
           ))}
         </ul>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md bg-slate-50 p-3 text-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm">
           <div>
             <strong>Contrôle sans connexion :</strong>{" "}
             {event.offlineScan ? <Badge color="green">Autorisé</Badge> : <Badge color="red">Désactivé</Badge>}
@@ -131,7 +131,7 @@ export default async function EventSettings({ params }: PageProps<"/events/[even
           </div>
           {canConfigure && (
             <form action={toggleOfflineScan.bind(null, event.id)}>
-              <button className="text-blue-700 hover:underline">{event.offlineScan ? "Désactiver" : "Autoriser"}</button>
+              <button className="link">{event.offlineScan ? "Désactiver" : "Autoriser"}</button>
             </form>
           )}
         </div>

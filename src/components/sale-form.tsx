@@ -145,16 +145,16 @@ export function SaleForm({
           </label>
         </div>
         <div className="flex items-center gap-3">
-          <button disabled={quoting} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-100 disabled:opacity-50">
+          <button disabled={quoting} className="btn btn-secondary">
             {quoting ? "…" : "Vérifier les billets"}
           </button>
           {quoteState?.error && <p className="text-sm text-red-700" role="alert">{quoteState.error}</p>}
-          {done && <p className="text-sm text-green-700">{done}</p>}
+          {done && <p className="text-sm text-emerald-700">{done}</p>}
         </div>
       </form>
 
       {q && !done && (
-        <form onSubmit={confirm} className="space-y-3 rounded-md border border-blue-200 bg-blue-50 p-4">
+        <form onSubmit={confirm} className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
           <input type="hidden" name="eventId" value={eventId} />
           <input type="hidden" name="sellerId" value={sellerId} />
           <input type="hidden" name="categoryId" value={q.categoryId} />
@@ -202,7 +202,7 @@ export function SaleForm({
             Montant encaissé : <strong>{gnf(Math.max(0, q.faceValueGnf - (discount || 0)))}</strong>
           </p>
           <div className="flex items-center gap-3">
-            <button disabled={selling} className="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">
+            <button disabled={selling} className="btn btn-primary">
               {selling ? "…" : "Confirmer la vente"}
             </button>
             {saleState?.error && <p className="text-sm text-red-700" role="alert">{saleState.error}</p>}

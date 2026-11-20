@@ -20,7 +20,7 @@ export default async function AuditPage({ searchParams }: PageProps<"/admin/audi
       <PageTitle>Journal d&apos;audit</PageTitle>
       <form className="mb-4 flex max-w-md gap-2">
         <input name="action" defaultValue={typeof action === "string" ? action : ""} placeholder="Filtrer par action (ex. user., batch.)" />
-        <button className="mt-1 rounded-md border border-slate-300 bg-white px-3 text-sm">Filtrer</button>
+        <button className="btn btn-secondary mt-1.5 h-[38px]">Filtrer</button>
       </form>
       <Card>
         <p className="mb-3 text-xs text-slate-500">200 entrées les plus récentes. Le journal n&apos;est pas modifiable depuis l&apos;interface.</p>

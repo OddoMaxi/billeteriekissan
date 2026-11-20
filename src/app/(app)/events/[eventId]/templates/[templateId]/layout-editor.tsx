@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useActionState, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { Notice } from "@/components/ui";
 import {
   checkLayout,
   DEFAULT_LAYOUT,
@@ -125,7 +126,7 @@ export function LayoutEditor({
 
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto rounded-md border border-slate-300 bg-slate-200 p-2">
+      <div className="overflow-x-auto rounded-xl border border-slate-300 bg-slate-200 p-2">
         <svg
           ref={svgRef}
           viewBox={`0 0 ${widthMm} ${heightMm}`}
@@ -191,7 +192,7 @@ export function LayoutEditor({
       </p>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <fieldset className="rounded-md border border-slate-200 p-3">
+        <fieldset className="rounded-xl border border-slate-200 p-3">
           <legend className="px-1 text-sm font-semibold">Talon</legend>
           <label className="flex items-center gap-2 font-normal">
             <input
@@ -245,7 +246,7 @@ export function LayoutEditor({
           return (
             <fieldset
               key={key}
-              className={`rounded-md border p-3 ${selected === key ? "border-blue-500" : "border-slate-200"}`}
+              className={`rounded-xl border p-3 ${selected === key ? "border-blue-500" : "border-slate-200"}`}
               onFocus={() => setSelected(key)}
             >
               <legend className="px-1 text-sm font-semibold">{LABELS[key]}</legend>
@@ -260,9 +261,9 @@ export function LayoutEditor({
       </div>
 
       {(check.errors.length > 0 || check.warnings.length > 0) && (
-        <div className="space-y-1 text-sm">
-          {check.errors.map((e) => <p key={e} className="text-red-700">✗ {e}</p>)}
-          {check.warnings.map((w) => <p key={w} className="text-orange-700">⚠ {w}</p>)}
+        <div className="space-y-2">
+          {check.errors.map((e) => <Notice key={e} compact level="error">{e}</Notice>)}
+          {check.warnings.map((w) => <Notice key={w} compact level="warning">{w}</Notice>)}
         </div>
       )}
 
@@ -271,11 +272,11 @@ export function LayoutEditor({
           type="button"
           onClick={submit}
           disabled={pending || !dirty || check.errors.length > 0}
-          className="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+          className="btn btn-primary"
         >
           {pending ? "…" : locked ? `Enregistrer comme version ${nextVersion}` : "Enregistrer la disposition"}
         </button>
-        <a href={previewUrl} target="_blank" className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-100">
+        <a href={previewUrl} target="_blank" className="btn btn-secondary">
           Aperçu PDF avec repères
         </a>
         <button type="button" onClick={() => setLayout(initialLayout)} disabled={!dirty} className="text-sm text-slate-600 hover:underline disabled:opacity-40">
@@ -285,7 +286,7 @@ export function LayoutEditor({
           Disposition proposée
         </button>
         {state?.error && <p className="text-sm text-red-700" role="alert">{state.error}</p>}
-        {state?.ok && !dirty && <p className="text-sm text-green-700">{state.ok}</p>}
+        {state?.ok && !dirty && <p className="text-sm text-emerald-700">{state.ok}</p>}
       </div>
       {locked && (
         <p className="text-xs text-slate-500">

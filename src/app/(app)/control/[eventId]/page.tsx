@@ -1,4 +1,6 @@
+import { ArrowLeftRight, ChevronLeft, ChevronRight, DoorOpen } from "lucide-react";
 import Link from "next/link";
+import { Notice } from "@/components/ui";
 import { redirect } from "next/navigation";
 import { requireEventPermission } from "@/lib/authz";
 import { db } from "@/lib/db";
@@ -21,28 +23,47 @@ export default async function ControlPage({ params, searchParams }: PageProps<"/
 
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-xl font-bold">Contrôle · {event.name}</h1>
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <Link href={`/events/${eventId}`} className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800">
+            <ChevronLeft className="h-4 w-4" />
+            {event.name}
+          </Link>
+          <h1 className="font-display mt-1 text-[26px] leading-tight font-semibold tracking-tight text-slate-900">Contrôle d&apos;entrée</h1>
+        </div>
         {gate && gates.length > 1 && (
-          <Link href={`/control/${eventId}`} className="text-sm text-blue-700 hover:underline">Changer de porte</Link>
+          <Link href={`/control/${eventId}`} className="btn btn-secondary">
+            <ArrowLeftRight className="h-4 w-4" />
+            Changer de porte
+          </Link>
         )}
       </div>
       {event.status !== "OPEN" && (
-        <p className="mb-4 rounded-md bg-orange-100 p-3 text-sm text-orange-900">
-          L&apos;événement n&apos;est pas ouvert : toutes les lectures seront refusées.
-        </p>
+        <div className="mb-4">
+          <Notice level="warning">L&apos;événement n&apos;est pas ouvert : toutes les lectures seront refusées.</Notice>
+        </div>
       )}
       {gate ? (
         <Scanner eventId={eventId} gate={{ id: gate.id, name: gate.name }} canOverride={access.can("scan.override")} tz={event.timezone} />
       ) : gates.length === 0 ? (
-        <p className="rounded-md bg-red-50 p-4 text-red-800">Aucune porte ouverte ne vous est affectée. Contactez l&apos;organisateur.</p>
+        <Notice level="error">Aucune porte ouverte ne vous est affectée. Contactez l&apos;organisateur.</Notice>
       ) : (
         <div>
-          <p className="mb-3 text-slate-600">Choisissez votre porte :</p>
+          <p className="mb-4 text-sm text-slate-600">Choisissez la porte que vous contrôlez :</p>
           <div className="grid gap-3 sm:grid-cols-2">
             {gates.map((g) => (
-              <Link key={g.id} href={`/control/${eventId}?gate=${g.id}`} className="rounded-xl border-2 border-slate-300 bg-white p-6 text-center text-xl font-bold hover:border-blue-600">
-                {g.name}
+              <Link
+                key={g.id}
+                href={`/control/${eventId}?gate=${g.id}`}
+                className="group flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 transition-colors hover:border-blue-600"
+              >
+                <span className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+                    <DoorOpen className="h-5 w-5" strokeWidth={1.75} />
+                  </span>
+                  <span className="text-lg font-semibold text-slate-900">{g.name}</span>
+                </span>
+                <ChevronRight className="h-5 w-5 text-slate-400 transition-transform group-hover:translate-x-0.5" />
               </Link>
             ))}
           </div>

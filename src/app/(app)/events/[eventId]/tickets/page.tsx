@@ -25,7 +25,7 @@ export default async function TicketLookupPage({ params, searchParams }: PagePro
       <Card title="Rechercher un billet">
         <form className="flex max-w-xl gap-2">
           <input name="q" defaultValue={query} placeholder="Numéro (012), catégorie et numéro (VIP 012) ou scan du QR" autoFocus autoComplete="off" />
-          <button className="mt-1 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white">Rechercher</button>
+          <button className="btn btn-primary mt-1.5 h-[38px]">Rechercher</button>
         </form>
         <p className="mt-2 text-xs text-slate-500">
           Chaque catégorie a sa propre numérotation : précisez la catégorie (« VIP 012 ») si besoin. La consultation ne consomme pas le billet.
@@ -36,7 +36,7 @@ export default async function TicketLookupPage({ params, searchParams }: PagePro
         <Card><p className="text-sm text-red-700">Aucun billet de cet événement ne correspond à « {query.length > 20 ? query.slice(0, 8) + "…" : query} ».</p></Card>
       )}
       {results.length > 1 && (
-        <p className="mb-4 rounded-md bg-orange-50 p-3 text-sm text-orange-900">
+        <p className="mb-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
           Ce numéro existe dans {results.length} catégories : {results.map((r) => r.ticket.category.name).join(", ")}. Vérifiez la catégorie imprimée sur le billet.
         </p>
       )}

@@ -54,7 +54,7 @@ export default async function UsersPage() {
               <Td className="space-y-2">
                 {u.id !== me.id && (
                   <form action={setUserStatus.bind(null, u.id, u.status === "ACTIVE" ? "DISABLED" : "ACTIVE")}>
-                    <button className="text-blue-700 hover:underline">{u.status === "ACTIVE" ? "Désactiver" : "Réactiver"}</button>
+                    <button className="link">{u.status === "ACTIVE" ? "Désactiver" : "Réactiver"}</button>
                   </form>
                 )}
                 <details>

@@ -37,7 +37,7 @@ export default async function BatchPage({ params }: PageProps<"/events/[eventId]
     <>
       <AutoRefresh active={inProgress} intervalMs={alive ? 1500 : 5000} />
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Link href={`/events/${eventId}/batches`} className="text-sm text-blue-700 hover:underline">← Lots</Link>
+        <Link href={`/events/${eventId}/batches`} className="text-sm link">← Lots</Link>
         <h2 className="text-xl font-bold">Lot {b.category.name} {formatNumber(b.firstNumber)} → {formatNumber(b.lastNumber)}</h2>
         <BatchStatusBadge status={b.status} />
       </div>
@@ -64,11 +64,11 @@ export default async function BatchPage({ params }: PageProps<"/events/[eventId]
       )}
       {isAdmin && b.status === "FAILED" && (
         <form action={retryBatch.bind(null, eventId, b.id)} className="mb-6">
-          <button className="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800">Relancer la génération</button>
+          <button className="btn btn-primary">Relancer la génération</button>
         </form>
       )}
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Stat label="Billets" value={b.quantity.toLocaleString("fr-FR")} sub={`${formatNumber(b.firstNumber)} à ${formatNumber(b.lastNumber)}`} />
         <Stat label="Pages A4" value={totalPages} sub={`${b.ticketsPerPage} tickets par page · ${b.layout === "STACKS" ? "découpe en piles" : "ordre séquentiel"}`} />
         <Stat label="En stock central" value={count("IN_STOCK").toLocaleString("fr-FR")} />
@@ -93,7 +93,7 @@ export default async function BatchPage({ params }: PageProps<"/events/[eventId]
             Billets retirés : {blocked.map((t) => `${formatNumber(t.number)} (${t.blockState.toLowerCase()})`).join(", ")}
           </p>
         )}
-        <a href={`/api/batches/${b.id}/manifest`} className="mt-4 inline-block text-sm text-blue-700 hover:underline">Télécharger le manifeste (JSON)</a>
+        <a href={`/api/batches/${b.id}/manifest`} className="mt-4 inline-block text-sm link">Télécharger le manifeste (JSON)</a>
       </Card>
 
       {access.can("stock.assign") && b.status === "READY" && (
@@ -112,7 +112,7 @@ export default async function BatchPage({ params }: PageProps<"/events/[eventId]
               <Field label="Motif"><input name="reason" placeholder="Vente rapide au guichet" className="!w-72" /></Field>
             </ActionForm>
           )}
-          {activated > 0 && activated === b.quantity - blocked.length && <p className="text-sm text-green-700">Tout le lot est activé.</p>}
+          {activated > 0 && activated === b.quantity - blocked.length && <p className="text-sm text-emerald-700">Tout le lot est activé.</p>}
           <p className="mt-2 text-xs text-slate-500">Pour une partie du lot ou une désactivation : onglet Stock.</p>
         </Card>
       )}
@@ -122,7 +122,7 @@ export default async function BatchPage({ params }: PageProps<"/events/[eventId]
           <Card title="Impression">
             {b.pdfPath ? (
               <>
-                <a href={`/api/batches/${b.id}/pdf`} className="inline-block rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800">
+                <a href={`/api/batches/${b.id}/pdf`} className="inline-block btn btn-primary">
                   Télécharger le PDF ({totalPages} pages)
                 </a>
                 <p className="mt-2 text-xs text-slate-500">
@@ -144,7 +144,7 @@ export default async function BatchPage({ params }: PageProps<"/events/[eventId]
               <div className="flex flex-wrap items-end gap-3">
                 <Field label="De la page (facultatif)"><input name="fromPage" type="number" min={1} max={totalPages} className="!w-28" /></Field>
                 <Field label="à la page"><input name="toPage" type="number" min={1} max={totalPages} className="!w-28" /></Field>
-                <button className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-100">Réimprimer</button>
+                <button className="btn btn-secondary">Réimprimer</button>
               </div>
             </form>
           </Card>

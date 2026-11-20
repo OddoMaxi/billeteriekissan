@@ -20,7 +20,7 @@ export default async function DashboardPage() {
   return (
     <>
       <PageTitle>Tableau de bord</PageTitle>
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Stat label="Événements" value={visible.length} sub={`${visible.filter((e) => e.status === "OPEN").length} ouverts`} />
         <Stat label="Billets vendus" value={n(sum("sold"))} sub={`${n(sum("used"))} entrées`} />
         <Stat label="Recettes nettes déclarées" value={formatGnf(sum("netGnf"))} />
@@ -33,7 +33,7 @@ export default async function DashboardPage() {
             return (
               <tr key={e.id}>
                 <Td>
-                  <Link href={`/events/${e.id}`} className="font-medium text-blue-700 hover:underline">{e.name}</Link>
+                  <Link href={`/events/${e.id}`} className="font-medium link">{e.name}</Link>
                   <div className="text-xs text-slate-500">{e.organization.name}</div>
                 </Td>
                 <Td className="text-xs">{formatDateTime(e.startsAt, e.timezone)}</Td>

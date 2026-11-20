@@ -62,7 +62,7 @@ export default async function GatesPage({ params }: PageProps<"/events/[eventId]
   return (
     <>
       <AutoRefresh active={event.status === "OPEN"} intervalMs={10_000} />
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Stat label="Entrés" value={stats.admitted.toLocaleString("fr-FR")} sub={`sur ${issuable.toLocaleString("fr-FR")} billets vendus ou activés`} />
         <Stat label="Refus" value={stats.byReason.reduce((a, r) => a + r._count, 0).toLocaleString("fr-FR")} sub="lectures non admises" />
         <Stat label="Admissions par dérogation" value={stats.exceptions} />
@@ -124,7 +124,7 @@ export default async function GatesPage({ params }: PageProps<"/events/[eventId]
         ) : (
           <ul className="space-y-3">
             {incidents.map((i) => (
-              <li key={i.id} className={`rounded-md border p-3 text-sm ${i.resolvedAt ? "border-slate-200" : "border-orange-300 bg-orange-50"}`}>
+              <li key={i.id} className={`rounded-xl border p-3 text-sm ${i.resolvedAt ? "border-slate-200" : "border-amber-300 bg-amber-50"}`}>
                 <div>
                   <strong>{gateName.get(i.gateId)}</strong> · {name(i.controllerId)} · {formatDateTime(i.createdAt, tz)}
                 </div>

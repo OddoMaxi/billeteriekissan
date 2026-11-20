@@ -23,7 +23,7 @@ export default async function TemplatesPage({ params }: PageProps<"/events/[even
   return (
     <>
       <Card title="Importer le design du ticket">
-        <div className="mb-4 grid gap-4 rounded-md bg-blue-50 p-4 text-sm text-blue-950 md:grid-cols-2">
+        <div className="mb-4 grid gap-4 rounded-xl bg-blue-50 p-4 text-sm text-blue-950 md:grid-cols-2">
           <div>
             <p className="font-semibold">Format attendu : 210 × 59,4 mm, horizontal</p>
             <p className="mt-1">
@@ -74,7 +74,7 @@ export default async function TemplatesPage({ params }: PageProps<"/events/[even
           {templates.map((t) => (
             <tr key={t.id}>
               <Td>
-                <Link href={`/events/${eventId}/templates/${t.id}`} className="font-medium text-blue-700 hover:underline">{t.name}</Link>
+                <Link href={`/events/${eventId}/templates/${t.id}`} className="font-medium link">{t.name}</Link>
               </Td>
               <Td>v{t.version}</Td>
               <Td>{MIME_LABEL[t.backgroundMime]}</Td>
